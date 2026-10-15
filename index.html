@@ -1,105 +1,552 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LightWork Ops Tracker</title>
-<style>
-:root{--bg:#f1f4f8;--card:#fff;--ink:#17202e;--mut:#667085;--line:#dde3ec;--acc:#1f4fd8;--ok:#13795b;--warn:#b86e00;--bad:#c4302b}
-*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
-header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line)}
-h1{font-size:19px;margin:0}main{max-width:1120px;margin:0 auto;padding:16px}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-button,select,input,textarea{font:inherit}
-button{padding:7px 12px;border:1px solid var(--line);background:var(--card);border-radius:6px;cursor:pointer;color:var(--ink)}
-button.p{background:var(--acc);color:#fff;border-color:var(--acc)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-input,select,textarea{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
-textarea{width:100%;min-height:110px;margin-bottom:8px}
-.box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px}
-.tabs{display:flex;flex-wrap:wrap;gap:4px;margin:14px 0}.tabs .on{background:var(--ink);color:#fff;border-color:var(--ink)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;align-items:start}
-.card{border-top:1px solid var(--line);padding:10px 0;margin-top:8px}
-.pill{font-size:12px;padding:1px 8px;border-radius:99px;color:#fff;white-space:nowrap}
-.on-track{background:var(--ok)}.at-risk{background:var(--warn)}.missed{background:var(--bad)}.done{background:#667085}
-.mut{color:var(--mut);font-size:13px}.flag{color:var(--bad);font-size:13px}.hide{display:none}
-table{width:100%;border-collapse:collapse}td{padding:4px 4px 4px 0}
-</style></head>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LightWork Ops Tracker</title>
+    <style>
+        :root {
+            --bg: #f1f4f8;
+            --card: #fff;
+            --ink: #17202e;
+            --mut: #667085;
+            --line: #dde3ec;
+            --acc: #1f4fd8;
+            --ok: #13795b;
+            --warn: #b86e00;
+            --bad: #c4302b
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--ink)
+        }
+
+        header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            background: var(--card);
+            border-bottom: 1px solid var(--line)
+        }
+
+        h1 {
+            font-size: 19px;
+            margin: 0
+        }
+
+        main {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 16px
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center
+        }
+
+        button,
+        select,
+        input,
+        textarea {
+            font: inherit
+        }
+
+        button {
+            padding: 7px 12px;
+            border: 1px solid var(--line);
+            background: var(--card);
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--ink)
+        }
+
+        button.p {
+            background: var(--acc);
+            color: #fff;
+            border-color: var(--acc)
+        }
+
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible {
+            outline: 2px solid var(--acc);
+            outline-offset: 1px
+        }
+
+        input,
+        select,
+        textarea {
+            padding: 7px 9px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #fff;
+            max-width: 100%
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 110px;
+            margin-bottom: 8px
+        }
+
+        .box {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 14px
+        }
+
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin: 14px 0
+        }
+
+        .tabs .on {
+            background: var(--ink);
+            color: #fff;
+            border-color: var(--ink)
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            align-items: start
+        }
+
+        .card {
+            border-top: 1px solid var(--line);
+            padding: 10px 0;
+            margin-top: 8px
+        }
+
+        .pill {
+            font-size: 12px;
+            padding: 1px 8px;
+            border-radius: 99px;
+            color: #fff;
+            white-space: nowrap
+        }
+
+        .on-track {
+            background: var(--ok)
+        }
+
+        .at-risk {
+            background: var(--warn)
+        }
+
+        .missed {
+            background: var(--bad)
+        }
+
+        .done {
+            background: #667085
+        }
+
+        .mut {
+            color: var(--mut);
+            font-size: 13px
+        }
+
+        .flag {
+            color: var(--bad);
+            font-size: 13px
+        }
+
+        .hide {
+            display: none
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse
+        }
+
+        td {
+            padding: 4px 4px 4px 0
+        }
+
+        a {
+            color: var(--acc)
+        }
+
+        a.t {
+            color: var(--ink);
+            font-weight: 600;
+            text-decoration: none
+        }
+
+        a.t:hover {
+            color: var(--acc);
+            text-decoration: underline
+        }
+
+        .kv td {
+            border-top: 1px solid var(--line);
+            padding: 6px 8px 6px 0;
+            vertical-align: top
+        }
+
+        .kv td:first-child {
+            color: var(--mut);
+            width: 42%;
+            max-width: 200px
+        }
+
+        pre {
+            background: #f6f8fb;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 10px;
+            overflow: auto;
+            font-size: 12px;
+            margin: 10px 0 0
+        }
+
+        .tag {
+            font-size: 11px;
+            padding: 0 6px;
+            border: 1px solid var(--line);
+            border-radius: 99px;
+            color: var(--mut)
+        }
+
+        summary {
+            cursor: pointer
+        }
+
+        #cbtn {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 20;
+            border-radius: 99px;
+            padding: 10px 16px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .18)
+        }
+
+        #chat {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 21;
+            width: 380px;
+            max-width: calc(100vw - 32px);
+            height: 560px;
+            max-height: calc(100vh - 32px);
+            display: flex;
+            flex-direction: column;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .2)
+        }
+
+        #chat.hide,
+        #cbtn.hide {
+            display: none
+        }
+
+        #chat header {
+            padding: 10px 12px;
+            border-radius: 10px 10px 0 0
+        }
+
+        #cmsgs {
+            flex: 1;
+            overflow: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px
+        }
+
+        .msg {
+            padding: 8px 10px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            max-width: 92%;
+            font-size: 14px
+        }
+
+        .msg.u {
+            align-self: flex-end;
+            background: var(--acc);
+            color: #fff
+        }
+
+        .msg.a {
+            align-self: flex-start;
+            background: var(--bg)
+        }
+
+        .msg.a .mut {
+            display: block;
+            margin-top: 4px;
+            font-size: 12px
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px
+        }
+
+        .chips button {
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 99px
+        }
+
+        #cform {
+            display: flex;
+            gap: 6px;
+            padding: 10px;
+            border-top: 1px solid var(--line)
+        }
+
+        #cin {
+            flex: 1;
+            min-width: 0
+        }
+    </style>
+</head>
+
 <body>
-<header><div><h1>LightWork Ops Tracker</h1><span class="mut" id="ai"></span></div>
-<div class="row"><label class="mut">Today <input type="date" id="today"></label><button id="real">Use real date</button><button id="reset">Reset demo data</button><button id="blank">Start blank</button></div></header>
-<main>
-<section class="box" id="attn"></section>
-<div class="tabs" id="tabs"></div>
-<section id="t0"></section>
-<section id="t1" class="box hide"><p class="mut">Paste one or more updates in plain English, one per line. Check the match, then apply.</p>
-<textarea id="utext" placeholder="Greenfield: legal sent redlines, signing likely Friday"></textarea>
-<div class="row"><button class="p" id="ubtn">Match to commitments</button><span class="mut" id="ust"></span></div><div id="uout"></div></section>
-<section id="t2" class="box hide"><p class="mut">Paste a messy list of goals with deadlines. Check the rows, then add them to the board.</p>
-<textarea id="itext" placeholder="Engineering: ship integration by 14 April&#10;Commercial: close pilot with Greenfield by end of month"></textarea>
-<div class="row"><button class="p" id="ibtn">Extract commitments</button><span class="mut" id="ist"></span></div><div id="iout"></div></section>
-<section id="t3" class="box hide"><div class="row"><button class="p" id="sbtn">Generate weekly summary</button><button id="scopy">Copy</button><span class="mut" id="sst"></span></div>
-<textarea id="sout" style="min-height:360px;margin-top:8px" placeholder="The summary appears here. You can edit it before copying."></textarea></section>
-</main>
-<script>
-const WORKER_URL="https://lightwork.willgthompson1999.workers.dev/";
-const TEAMS=["Engineering","Product","Commercial","Operations"],KEY="lw_ops_v1";
-const $=s=>document.querySelector(s),esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const LBL={"on-track":"On track","at-risk":"At risk",missed:"Missed",done:"Done"};
-const realToday=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
-const D=s=>Date.UTC(+s.slice(0,4),+s.slice(5,7)-1,+s.slice(8,10)),diff=(a,b)=>Math.round((D(a)-D(b))/864e5),add=(s,n)=>new Date(D(s)+n*864e5).toISOString().slice(0,10);
-function demo(){const t=realToday();let i=0;const m=(team,title,owner,due,upd,note,o={})=>({id:"c"+(++i),team,title,owner,due:add(t,due),created:add(t,-14),log:[{d:add(t,upd),t:note}],risk:!!o.risk,done:!!o.done,doneOn:o.done?add(t,upd):null});
-return[m("Engineering","Ship Greenfield integration","Sam",3,-7,"Auth flow done, webhooks still open"),m("Engineering","Publish v2 API docs","Priya",12,-1,"Draft reviewed, final edits Monday"),
-m("Product","Finalise onboarding redesign spec","Maya",-2,-6,"Waiting on design sign-off"),m("Product","Run 10 customer interviews","Leo",5,-1,"6 of 10 done, scheduling is slow",{risk:1}),
-m("Commercial","Close pilot with Greenfield","Dana",6,-6,"Pricing agreed, legal review pending"),m("Commercial","Send Q4 pricing proposal to 3 prospects","Dana",20,-2,"Template ready"),
-m("Operations","Complete SOC 2 vendor questionnaire","Chris",-5,-3,"Submitted to auditor",{done:1}),m("Operations","Set up new-hire onboarding checklist","Chris",9,-11,"Outline started")]}
-let S=(()=>{try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.items)return s}catch(e){}return{today:realToday(),items:demo()}})();
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},open=()=>S.items.filter(c=>!c.done);
-function info(c){const T=S.today,last=c.log.length?c.log[c.log.length-1].d:c.created,since=diff(T,last),left=diff(c.due,T),why=[];let st="on-track";
-if(c.done)st="done";else if(left<0){st="missed";why.push("overdue by "+-left+" days")}else{if(c.risk){st="at-risk";why.push("owner flagged a risk")}
-if(left<=7&&since>=5){st="at-risk";why.push("due in "+left+" days, no update for "+since+" days")}}
-const needs=!c.done&&st!=="missed"&&((left<=7&&since>=5)||since>=10);if(needs&&!why.length)why.push("no update for "+since+" days");return{st,why:why.join("; "),since,left,needs}}
-const nudge=(c,i)=>`Hi ${c.owner}, "${c.title}" ${i.left<0?"was due "+-i.left+" days ago":"is due in "+i.left+" days"}${i.since>=5?" and there's been no update for "+i.since+" days":" and you've flagged a risk"}. Where are we, and is anything blocking you?`;
-const copy=t=>{try{navigator.clipboard.writeText(t)}catch(e){}};
-function rAttn(){const f=open().map(c=>({c,i:info(c)})).filter(x=>x.i.st!=="on-track"||x.i.needs).sort((a,b)=>(b.i.st==="missed")-(a.i.st==="missed"));
-$("#attn").innerHTML=`<div class="row" style="justify-content:space-between"><b>Attention needed (${f.length})</b><button class="p" id="nud">Run daily check</button></div>`+
-(f.length?f.map(x=>`<div class="card"><span class="pill ${x.i.st}">${x.i.needs&&x.i.st==="on-track"?"Needs update":LBL[x.i.st]}</span> <b>${esc(x.c.title)}</b> <span class="mut">${esc(x.c.team)} / ${esc(x.c.owner)}</span><div class="flag">${esc(x.i.why)}</div></div>`).join(""):'<p class="mut">Nothing needs attention today.</p>')+'<div id="nout"></div>';
-$("#nud").onclick=()=>{const t=f.length?f.map(x=>nudge(x.c,x.i)).join("\n\n"):"No nudges needed today.";$("#nout").innerHTML='<p class="mut">Draft nudges, ready to paste into Slack or email:</p><textarea id="ntxt"></textarea><button id="ncp">Copy</button>';$("#ntxt").value=t;$("#ncp").onclick=()=>copy(t)}}
-function card(c){const i=info(c),l=c.log[c.log.length-1];return`<div class="card"><span class="pill ${i.st}">${LBL[i.st]}</span> <b>${esc(c.title)}</b><div class="mut">${esc(c.owner)}, due ${c.due} (${i.left<0?-i.left+" days ago":"in "+i.left+" days"})</div>
-<div class="mut">${l?"Last update "+i.since+" days ago: "+esc(l.t):"No updates yet"}</div>${i.why&&!c.done?`<div class="flag">${esc(i.why)}</div>`:""}
-<div class="row" style="margin-top:6px">${c.done?"":`<button onclick="act('${c.id}','done')">Mark done</button><button onclick="act('${c.id}','note')">Add note</button>`}<button onclick="act('${c.id}','del')">Delete</button></div>
-${c.log.length>1?`<details><summary class="mut">History (${c.log.length})</summary>${c.log.slice().reverse().map(e=>`<div class="mut">${e.d}: ${esc(e.t)}</div>`).join("")}</details>`:""}</div>`}
-function rBoard(){$("#t0").innerHTML='<div class="grid">'+TEAMS.map(t=>`<div class="box"><b>${t}</b>${S.items.filter(c=>c.team===t).map(card).join("")||'<p class="mut">No commitments yet. Use Import goals.</p>'}</div>`).join("")+"</div>"}
-function act(id,a){const c=S.items.find(x=>x.id===id);if(a==="done"){c.done=true;c.doneOn=S.today;c.log.push({d:S.today,t:"Marked done"})}
-else if(a==="note"){const t=prompt('Update for "'+c.title+'"');if(!t)return;c.log.push({d:S.today,t});c.risk=confirm("Is it at risk?\nOK = at risk, Cancel = on track")}
-else if(!confirm("Delete this commitment?"))return;else S.items=S.items.filter(x=>x!==c);save();render()}
-const aiOn=()=>WORKER_URL&&!WORKER_URL.startsWith("PASTE");
-async function ai(system,prompt){if(!aiOn())throw 0;const ac=new AbortController(),to=setTimeout(()=>ac.abort(),30000);
-try{const r=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system,prompt}),signal:ac.signal});const d=await r.json().catch(()=>({}));if(!r.ok||!d.text)throw new Error(d.error||"HTTP "+r.status);return d.text}finally{clearTimeout(to)}}
-const pj=t=>JSON.parse(t.match(/[\[{][\s\S]*[\]}]/)[0]),words=s=>s.toLowerCase().match(/[a-z0-9]{3,}/g)||[],why=e=>aiOn()?"AI failed ("+(e&&e.message||"unknown error")+"). Used the simple built-in method. Check each row.":"AI not connected. Used the simple built-in method. Check each row.";
-function guess(l){const w=new Set(words(l));let b="",bs=0;open().forEach(c=>{const s=words(c.title+" "+c.owner+" "+c.team).filter(x=>w.has(x)).length;if(s>bs){bs=s;b=c.id}});return b}
-$("#ubtn").onclick=async()=>{const txt=$("#utext").value.trim();if(!txt)return;$("#ust").textContent="Working...";let P;
-try{P=pj(await ai('You match status updates to commitments. Reply with ONLY a JSON array, one object per update: {"id":"<commitment id or empty string>","note":"<short clean note>","risk":true|false,"done":true|false}. risk is true only if the update signals a delay, blocker or concern. done is true only if the work is complete.',"Commitments: "+JSON.stringify(open().map(c=>({id:c.id,team:c.team,title:c.title,owner:c.owner})))+"\n\nUpdates, one per line:\n"+txt));$("#ust").textContent="Matched with AI. Check before applying."}
-catch(e){P=txt.split(/\n+/).filter(Boolean).map(l=>({id:guess(l),note:l,risk:/delay|block|slip|risk|stuck|waiting|late/i.test(l),done:/\b(done|completed|shipped|signed|closed)\b/i.test(l)}));$("#ust").textContent=why(e)}
-const o=open();$("#uout").innerHTML=P.map((p,k)=>`<div class="card"><div class="row"><select id="ps${k}"><option value="">Pick a commitment</option>${o.map(c=>`<option value="${c.id}"${c.id===p.id?" selected":""}>${esc(c.team)}: ${esc(c.title)}</option>`).join("")}</select><input id="pn${k}" value="${esc(p.note)}" style="flex:1;min-width:200px"><label><input type="checkbox" id="pr${k}"${p.risk?" checked":""}> At risk</label><label><input type="checkbox" id="pd${k}"${p.done?" checked":""}> Done</label></div></div>`).join("")+'<button class="p" id="uapp">Apply updates</button>';
-$("#uapp").onclick=()=>{let n=0;P.forEach((p,k)=>{const c=S.items.find(x=>x.id===$("#ps"+k).value);if(!c)return;c.log.push({d:S.today,t:$("#pn"+k).value});c.risk=$("#pr"+k).checked;if($("#pd"+k).checked){c.done=true;c.doneOn=S.today}n++});save();render();$("#uout").innerHTML='<p class="mut">'+n+" update(s) applied.</p>";$("#utext").value=""}};
-function pd(s){if(!s)return"";if(/end of (the )?month/i.test(s)){const d=new Date(D(S.today));return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).toISOString().slice(0,10)}
-let t=Date.parse(s+" "+S.today.slice(0,4)+" UTC");if(isNaN(t))t=Date.parse(s+" UTC");return isNaN(t)?"":new Date(t).toISOString().slice(0,10)}
-const tm=p=>TEAMS.find(t=>t.toLowerCase().slice(0,2)===p.trim().toLowerCase().slice(0,2))||TEAMS[0];
-$("#ibtn").onclick=async()=>{const txt=$("#itext").value.trim();if(!txt)return;$("#ist").textContent="Working...";let R;
-try{R=pj(await ai('You extract team commitments from messy text. Reply with ONLY a JSON array of {"team":"Engineering|Product|Commercial|Operations","title":"short title","owner":"name or empty string","due":"YYYY-MM-DD or empty string"}. Today is '+S.today+'. Resolve phrases like "end of month" or "14 April" to the next matching date.',txt));$("#ist").textContent="Extracted with AI. Check before adding."}
-catch(e){R=txt.split(/\n+|;/).filter(x=>x.trim()).map(l=>{const m=l.match(/^\s*([A-Za-z]+)\s*[:\-]\s*(.+?)(?:\s+(?:by|before|due)\s+(.+))?$/i);return m?{team:tm(m[1]),title:m[2],owner:"",due:pd(m[3]||"")}:{team:TEAMS[0],title:l.trim(),owner:"",due:""}});$("#ist").textContent=why(e)}
-$("#iout").innerHTML="<table>"+R.map((r,k)=>`<tr><td><input type="checkbox" id="ik${k}" checked></td><td><select id="it${k}">${TEAMS.map(t=>`<option${t===r.team?" selected":""}>${t}</option>`).join("")}</select></td><td><input id="ii${k}" value="${esc(r.title)}" style="width:100%"></td><td><input id="io${k}" value="${esc(r.owner)}" placeholder="Owner" size="9"></td><td><input type="date" id="id${k}" value="${esc(r.due)}"></td></tr>`).join("")+'</table><button class="p" id="iadd">Add to board</button>';
-$("#iadd").onclick=()=>{const rows=R.map((r,k)=>({k,on:$("#ik"+k).checked,due:$("#id"+k).value})).filter(x=>x.on);if(rows.some(x=>!x.due)){alert("Add a due date to every ticked row.");return}
-rows.forEach(x=>S.items.push({id:"c"+Date.now()+x.k,team:$("#it"+x.k).value,title:$("#ii"+x.k).value,owner:$("#io"+x.k).value||"Unassigned",due:x.due,created:S.today,log:[],risk:false,done:false,doneOn:null}));save();render();$("#iout").innerHTML='<p class="mut">'+rows.length+" commitment(s) added. See the Board tab.</p>";$("#itext").value=""}};
-function tmpl(){const T=S.today,I=info,o=open(),miss=o.filter(c=>I(c).st==="missed"),risk=o.filter(c=>I(c).st==="at-risk"),stale=o.filter(c=>I(c).needs&&!miss.includes(c)&&!risk.includes(c)),dn=S.items.filter(c=>c.done&&c.doneOn&&diff(T,c.doneOn)<=7);
-const L=(h,a,f)=>a.length?"\n"+h+"\n"+a.map(f).join("\n")+"\n":"",b=c=>"- "+c.team+": "+c.title+" ("+c.owner+", due "+c.due+")";
-return"Weekly summary, week ending "+T+"\n\nOverall: "+S.items.length+" commitments. "+(o.length-miss.length-risk.length)+" on track, "+risk.length+" at risk, "+miss.length+" missed, "+S.items.filter(c=>c.done).length+" done.\n"+
-L("MISSED",miss,c=>b(c)+": "+I(c).why)+L("AT RISK",risk,c=>b(c)+": "+I(c).why)+L("NEEDS AN UPDATE",stale,c=>b(c)+": "+I(c).why)+L("COMPLETED THIS WEEK",dn,b)}
-$("#sbtn").onclick=async()=>{const base=tmpl();$("#sst").textContent="Working...";let t=base;
-try{t=await ai("You are a chief of staff writing a weekly summary for startup founders. Use ONLY the facts given, add nothing. Plain text, no markdown tables. Lead with the biggest risks, then wins, then who to chase.",base);$("#sst").textContent="Written with AI. Edit as needed."}catch(e){$("#sst").textContent=aiOn()?"AI failed ("+(e&&e.message||"unknown error")+"). Used the built-in template.":"AI not connected. Used the built-in template."}
-$("#sout").value=t};$("#scopy").onclick=()=>copy($("#sout").value);
-$("#tabs").innerHTML=["Board","Log an update","Import goals","Weekly summary"].map((n,i)=>`<button data-t="${i}">${n}</button>`).join("");
-$("#tabs").onclick=e=>{const i=e.target.dataset.t;if(i==null)return;document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===i));[0,1,2,3].forEach(k=>$("#t"+k).classList.toggle("hide",k!=i))};
-$("#today").onchange=e=>{if(e.target.value){S.today=e.target.value;save();render()}};$("#real").onclick=()=>{S.today=realToday();save();render()};
-$("#reset").onclick=()=>{if(confirm("Reset all data to the demo set?")){S={today:realToday(),items:demo()};save();render()}};
-$("#blank").onclick=()=>{if(confirm("Remove all commitments and start with an empty board?")){S={today:realToday(),items:[]};save();render()}};
-function render(){$("#today").value=S.today;$("#ai").textContent=aiOn()?"AI configured (the error message shows if it fails)":"AI not connected, built-in fallbacks active";rAttn();rBoard()}
-render();$("#tabs button").click();
-</script></body></html>
+    <header>
+        <div>
+            <h1>LightWork Ops Tracker</h1><span class="mut" id="ai"></span>
+        </div>
+        <div class="row"><label class="mut">Today <input type="date" id="today"></label><button id="real">Use real
+                date</button><button id="blank">Clear all</button></div>
+    </header>
+    <main>
+        <div id="home">
+            <section class="box" id="attn"></section>
+            <div class="tabs" id="tabs"></div>
+            <section id="t0"></section>
+            <section id="t1" class="box hide">
+                <p class="mut">Paste one or more updates in plain English, one per line. Check the match, then apply.
+                </p>
+                <textarea id="utext" placeholder="Greenfield: legal sent redlines, signing likely Friday"></textarea>
+                <div class="row"><button class="p" id="ubtn">Match to commitments</button><span class="mut"
+                        id="ust"></span></div>
+                <div id="uout"></div>
+            </section>
+            <section id="t2" class="box hide">
+                <p class="mut">Paste a messy list of goals with deadlines. Check the rows, then add them to the board.
+                </p>
+                <textarea id="itext"
+                    placeholder="Engineering: ship integration by 14 April&#10;Commercial: close pilot with Greenfield by end of month"></textarea>
+                <div class="row"><button class="p" id="ibtn">Extract commitments</button><span class="mut"
+                        id="ist"></span></div>
+                <div id="iout"></div>
+            </section>
+            <section id="t3" class="box hide">
+                <div class="row"><button class="p" id="sbtn">Generate weekly summary</button><button
+                        id="scopy">Copy</button><span class="mut" id="sst"></span></div>
+                <textarea id="sout" style="min-height:360px;margin-top:8px"
+                    placeholder="The summary appears here. You can edit it before copying."></textarea>
+            </section>
+        </div>
+        <div id="detail" class="hide"></div>
+    </main>
+    <button class="p" id="cbtn" aria-label="Open chat">Ask about tasks</button>
+    <div id="chat" class="hide" role="dialog" aria-label="Ask about tasks">
+        <header><b>Ask about tasks</b>
+            <div class="row"><button id="cclr" title="Clear chat">Clear</button><button id="cx"
+                    aria-label="Close chat">&times;</button></div>
+        </header>
+        <div id="cmsgs" aria-live="polite"></div>
+        <form id="cform"><input id="cin" placeholder="e.g. What's at risk this week?" autocomplete="off"
+                aria-label="Your question"><button class="p">Send</button></form>
+    </div>
+    <script>
+        const WORKER_URL = "https://lightwork.willgthompson1999.workers.dev/";
+        const TEAMS = ["Engineering", "Product", "Commercial", "Operations"], KEY = "lw_ops_v1";
+        const $ = s => document.querySelector(s), esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        const LBL = { "on-track": "On track", "at-risk": "At risk", missed: "Missed", done: "Done" };
+        const realToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10) };
+        const D = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)), diff = (a, b) => Math.round((D(a) - D(b)) / 864e5), add = (s, n) => new Date(D(s) + n * 864e5).toISOString().slice(0, 10);
+        let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) return s } catch (e) { } return { today: realToday(), items: [] } })();
+        const lastUp = c => { const u = c.log.filter(e => e.k !== "change"); return u[u.length - 1] };
+        const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)) } catch (e) { } }, open = () => S.items.filter(c => !c.done);
+        function info(c) {
+            const T = S.today, lu = lastUp(c), last = lu ? lu.d : c.created, since = diff(T, last), left = diff(c.due, T), why = []; let st = "on-track";
+            if (c.done) st = "done"; else if (left < 0) { st = "missed"; why.push("overdue by " + -left + " days") } else {
+                if (c.risk) { st = "at-risk"; why.push("owner flagged a risk") }
+                if (left <= 7 && since >= 5) { st = "at-risk"; why.push("due in " + left + " days, no update for " + since + " days") }
+            }
+            const needs = !c.done && st !== "missed" && ((left <= 7 && since >= 5) || since >= 10); if (needs && !why.length) why.push("no update for " + since + " days"); return { st, why: why.join("; "), since, left, needs }
+        }
+        const nudge = (c, i) => `Hi ${c.owner}, "${c.title}" ${i.left < 0 ? "was due " + -i.left + " days ago" : "is due in " + i.left + " days"}${i.since >= 5 ? " and there's been no update for " + i.since + " days" : c.risk ? " and you've flagged a risk" : ""}. Where are we, and is anything blocking you?`;
+        const copy = t => { try { navigator.clipboard.writeText(t) } catch (e) { } };
+        function rAttn() {
+            const f = open().map(c => ({ c, i: info(c) })).filter(x => x.i.st !== "on-track" || x.i.needs).sort((a, b) => (b.i.st === "missed") - (a.i.st === "missed"));
+            $("#attn").innerHTML = `<div class="row" style="justify-content:space-between"><b>Attention needed (${f.length})</b><button class="p" id="nud">Run daily check</button></div>` +
+                (f.length ? f.map(x => `<div class="card"><span class="pill ${x.i.st}">${x.i.needs && x.i.st === "on-track" ? "Needs update" : LBL[x.i.st]}</span> <a class="t" href="#task/${encodeURIComponent(x.c.id)}">${esc(x.c.title)}</a> <span class="mut">${esc(x.c.team)} / ${esc(x.c.owner)}</span><div class="flag">${esc(x.i.why)}</div></div>`).join("") : '<p class="mut">Nothing needs attention today.</p>') + '<div id="nout"></div>';
+            $("#nud").onclick = () => { const t = f.length ? f.map(x => nudge(x.c, x.i)).join("\n\n") : "No nudges needed today."; $("#nout").innerHTML = '<p class="mut">Draft nudges, ready to paste into Slack or email:</p><textarea id="ntxt"></textarea><button id="ncp">Copy</button>'; $("#ntxt").value = t; $("#ncp").onclick = () => copy(t) }
+        }
+        function card(c) {
+            const i = info(c), l = lastUp(c); return `<div class="card"><span class="pill ${i.st}">${LBL[i.st]}</span> <a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a><div class="mut">${esc(c.owner)}, due ${c.due} (${i.left < 0 ? -i.left + " days ago" : "in " + i.left + " days"})</div>
+<div class="mut">${l ? "Last update " + i.since + " days ago: " + esc(l.t) : "No updates yet"}</div>${i.why && !c.done ? `<div class="flag">${esc(i.why)}</div>` : ""}
+<div class="row" style="margin-top:6px">${c.done ? "" : `<button onclick="act('${c.id}','done')">Mark done</button><button onclick="act('${c.id}','note')">Add note</button>`}<button onclick="act('${c.id}','del')">Delete</button></div>
+${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</summary>${c.log.slice().reverse().map(e => `<div class="mut">${e.d}: ${e.k === "change" ? "(change) " : ""}${esc(e.t)}</div>`).join("")}</details>` : ""}</div>`
+        }
+        function rBoard() { $("#t0").innerHTML = (S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>') + '<div class="grid">' + TEAMS.map(t => `<div class="box"><b>${t}</b>${S.items.filter(c => c.team === t).map(card).join("") || '<p class="mut">No commitments yet. Use Import goals.</p>'}</div>`).join("") + "</div>" }
+        function act(id, a) {
+            const c = S.items.find(x => x.id === id); if (a === "done") { c.done = true; c.doneOn = S.today; c.log.push({ d: S.today, t: "Marked done" }) }
+            else if (a === "note") { const t = prompt('Update for "' + c.title + '"'); if (!t) return; c.log.push({ d: S.today, t }); c.risk = confirm("Is it at risk?\nOK = at risk, Cancel = on track") }
+            else if (!confirm("Delete this commitment?")) return; else S.items = S.items.filter(x => x !== c); save(); render()
+        }
+        const aiOn = () => WORKER_URL && !WORKER_URL.startsWith("PASTE");
+        async function ai(system, prompt) {
+            if (!aiOn()) throw 0; const ac = new AbortController(), to = setTimeout(() => ac.abort(), 30000);
+            try { const r = await fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ system, prompt }), signal: ac.signal }); const d = await r.json().catch(() => ({})); if (!r.ok || !d.text) throw new Error(d.error || "HTTP " + r.status); return d.text } finally { clearTimeout(to) }
+        }
+        const pj = t => JSON.parse(t.match(/[\[{][\s\S]*[\]}]/)[0]), words = s => s.toLowerCase().match(/[a-z0-9]{3,}/g) || [], why = e => aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the simple built-in method. Check each row." : "AI not connected. Used the simple built-in method. Check each row.";
+        function guess(l) { const w = new Set(words(l)); let b = "", bs = 0; open().forEach(c => { const s = words(c.title + " " + c.owner + " " + c.team).filter(x => w.has(x)).length; if (s > bs) { bs = s; b = c.id } }); return b }
+        $("#ubtn").onclick = async () => {
+            const txt = $("#utext").value.trim(); if (!txt) return; $("#ust").textContent = "Working..."; let P;
+            try { P = pj(await ai('You match status updates to commitments. Reply with ONLY a JSON array, one object per update: {"id":"<commitment id or empty string>","note":"<short clean note>","risk":true|false,"done":true|false}. risk is true only if the update signals a delay, blocker or concern. done is true only if the work is complete.', "Commitments: " + JSON.stringify(open().map(c => ({ id: c.id, team: c.team, title: c.title, owner: c.owner }))) + "\n\nUpdates, one per line:\n" + txt)); $("#ust").textContent = "Matched with AI. Check before applying." }
+            catch (e) { P = txt.split(/\n+/).filter(Boolean).map(l => ({ id: guess(l), note: l, risk: /delay|block|slip|risk|stuck|waiting|late/i.test(l), done: /\b(done|completed|shipped|signed|closed)\b/i.test(l) })); $("#ust").textContent = why(e) }
+            const o = open(); $("#uout").innerHTML = P.map((p, k) => `<div class="card"><div class="row"><select id="ps${k}"><option value="">Pick a commitment</option>${o.map(c => `<option value="${c.id}"${c.id === p.id ? " selected" : ""}>${esc(c.team)}: ${esc(c.title)}</option>`).join("")}</select><input id="pn${k}" value="${esc(p.note)}" style="flex:1;min-width:200px"><label><input type="checkbox" id="pr${k}"${p.risk ? " checked" : ""}> At risk</label><label><input type="checkbox" id="pd${k}"${p.done ? " checked" : ""}> Done</label></div></div>`).join("") + '<button class="p" id="uapp">Apply updates</button>';
+            $("#uapp").onclick = () => { let n = 0; P.forEach((p, k) => { const c = S.items.find(x => x.id === $("#ps" + k).value); if (!c) return; c.log.push({ d: S.today, t: $("#pn" + k).value }); c.risk = $("#pr" + k).checked; if ($("#pd" + k).checked) { c.done = true; c.doneOn = S.today } n++ }); save(); render(); $("#uout").innerHTML = '<p class="mut">' + n + " update(s) applied.</p>"; $("#utext").value = "" }
+        };
+        function pd(s) {
+            if (!s) return ""; if (/end of (the )?month/i.test(s)) { const d = new Date(D(S.today)); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) }
+            let t = Date.parse(s + " " + S.today.slice(0, 4) + " UTC"); if (isNaN(t)) t = Date.parse(s + " UTC"); return isNaN(t) ? "" : new Date(t).toISOString().slice(0, 10)
+        }
+        const tm = p => TEAMS.find(t => t.toLowerCase().slice(0, 2) === p.trim().toLowerCase().slice(0, 2)) || TEAMS[0];
+        $("#ibtn").onclick = async () => {
+            const txt = $("#itext").value.trim(); if (!txt) return; $("#ist").textContent = "Working..."; let R;
+            try { R = pj(await ai('You extract team commitments from messy text. Reply with ONLY a JSON array of {"team":"Engineering|Product|Commercial|Operations","title":"short title","owner":"name or empty string","due":"YYYY-MM-DD or empty string"}. Today is ' + S.today + '. Resolve phrases like "end of month" or "14 April" to the next matching date.', txt)); $("#ist").textContent = "Extracted with AI. Check before adding." }
+            catch (e) { R = txt.split(/\n+|;/).filter(x => x.trim()).map(l => { const m = l.match(/^\s*([A-Za-z]+)\s*[:\-]\s*(.+?)(?:\s+(?:by|before|due)\s+(.+))?$/i); return m ? { team: tm(m[1]), title: m[2], owner: "", due: pd(m[3] || "") } : { team: TEAMS[0], title: l.trim(), owner: "", due: "" } }); $("#ist").textContent = why(e) }
+            $("#iout").innerHTML = "<table>" + R.map((r, k) => `<tr><td><input type="checkbox" id="ik${k}" checked></td><td><select id="it${k}">${TEAMS.map(t => `<option${t === r.team ? " selected" : ""}>${t}</option>`).join("")}</select></td><td><input id="ii${k}" value="${esc(r.title)}" style="width:100%"></td><td><input id="io${k}" value="${esc(r.owner)}" placeholder="Owner" size="9"></td><td><input type="date" id="id${k}" value="${esc(r.due)}"></td></tr>`).join("") + '</table><button class="p" id="iadd">Add to board</button>';
+            $("#iadd").onclick = () => {
+                const rows = R.map((r, k) => ({ k, on: $("#ik" + k).checked, due: $("#id" + k).value })).filter(x => x.on); if (rows.some(x => !x.due)) { alert("Add a due date to every ticked row."); return }
+                rows.forEach(x => S.items.push({ id: "c" + Date.now() + x.k, team: $("#it" + x.k).value, title: $("#ii" + x.k).value, owner: $("#io" + x.k).value || "Unassigned", due: x.due, created: S.today, log: [], risk: false, done: false, doneOn: null })); save(); render(); $("#iout").innerHTML = '<p class="mut">' + rows.length + " commitment(s) added. See the Board tab.</p>"; $("#itext").value = ""
+            }
+        };
+        function tmpl() {
+            const T = S.today, I = info, o = open(), miss = o.filter(c => I(c).st === "missed"), risk = o.filter(c => I(c).st === "at-risk"), stale = o.filter(c => I(c).needs && !miss.includes(c) && !risk.includes(c)), dn = S.items.filter(c => c.done && c.doneOn && diff(T, c.doneOn) <= 7);
+            const L = (h, a, f) => a.length ? "\n" + h + "\n" + a.map(f).join("\n") + "\n" : "", b = c => "- " + c.team + ": " + c.title + " (" + c.owner + ", due " + c.due + ")";
+            return "Weekly summary, week ending " + T + "\n\nOverall: " + S.items.length + " commitments. " + (o.length - miss.length - risk.length) + " on track, " + risk.length + " at risk, " + miss.length + " missed, " + S.items.filter(c => c.done).length + " done.\n" +
+                L("MISSED", miss, c => b(c) + ": " + I(c).why) + L("AT RISK", risk, c => b(c) + ": " + I(c).why) + L("NEEDS AN UPDATE", stale, c => b(c) + ": " + I(c).why) + L("COMPLETED THIS WEEK", dn, b)
+        }
+        $("#sbtn").onclick = async () => {
+            const base = tmpl(); $("#sst").textContent = "Working..."; let t = base;
+            try { t = await ai("You are a chief of staff writing a weekly summary for startup founders. Use ONLY the facts given, add nothing. Plain text, no markdown tables. Lead with the biggest risks, then wins, then who to chase.", base); $("#sst").textContent = "Written with AI. Edit as needed." } catch (e) { $("#sst").textContent = aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the built-in template." : "AI not connected. Used the built-in template." }
+            $("#sout").value = t
+        }; $("#scopy").onclick = () => copy($("#sout").value);
+        $("#tabs").innerHTML = ["Board", "Log an update", "Import goals", "Weekly summary"].map((n, i) => `<button data-t="${i}">${n}</button>`).join("");
+        $("#tabs").onclick = e => { const i = e.target.dataset.t; if (i == null) return; document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === i));[0, 1, 2, 3].forEach(k => $("#t" + k).classList.toggle("hide", k != i)) };
+        $("#today").onchange = e => { if (e.target.value) { S.today = e.target.value; save(); render() } }; $("#real").onclick = () => { S.today = realToday(); save(); render() };
+        $("#blank").onclick = () => { if (confirm("Delete all commitments and their history? This can't be undone.")) { S = { today: realToday(), items: [] }; save(); render() } };
+        const NAMES = { id: "ID", team: "Team", title: "Title", owner: "Owner", due: "Due date", created: "Created on", risk: "Owner flagged a risk", done: "Done", doneOn: "Done on", log: "Update history" };
+        const ORD = Object.keys(NAMES);
+        const fmt = (k, v) => k === "log" ? (v.length === 1 ? "1 entry" : v.length + " entries") + " (listed below)" : typeof v === "boolean" ? (v ? "Yes" : "No") : v == null || v === "" ? '<span class="mut">Not set</span>' : esc(v);
+        const pl = (n, w) => n + " " + w + (n === 1 ? "" : "s"), rel = n => n < 0 ? pl(-n, "day") + " ago" : n === 0 ? "today" : "in " + pl(n, "day");
+        function rDetail(id) {
+            const c = S.items.find(x => x.id === id), el = $("#detail"), back = '<p><a href="#">&larr; Back to board</a></p>';
+            if (!c) { el.innerHTML = back + '<div class="box">This commitment no longer exists. It may have been deleted.</div>'; return }
+            const i = info(c), lu = lastUp(c), flagged = !c.done && (i.st !== "on-track" || i.needs);
+            el.innerHTML = back + `<div class="box"><div class="row"><span class="pill ${i.st}">${LBL[i.st]}</span>${i.needs && i.st === "on-track" ? '<span class="pill at-risk">Needs update</span>' : ""}<h2 style="margin:0;font-size:20px">${esc(c.title)}</h2></div>
+<div class="mut">${esc(c.team)} / ${esc(c.owner)} / due ${c.due} (${rel(i.left)})</div>${i.why && !c.done ? `<div class="flag">${esc(i.why)}</div>` : ""}</div>
+<div class="grid"><div class="box"><b>Status as of ${S.today}</b><p class="mut">Worked out by fixed rules from the stored data. Not saved itself.</p><table class="kv">
+<tr><td>Status</td><td>${LBL[i.st]}${i.needs && i.st === "on-track" ? " (needs update)" : ""}</td></tr><tr><td>Reason</td><td>${c.done ? "Marked done" : esc(i.why) || "No issues"}</td></tr>
+<tr><td>Due</td><td>${c.due}, ${rel(i.left)}</td></tr><tr><td>Last progress update</td><td>${lu ? lu.d + " (" + (i.since ? pl(i.since, "day") + " ago" : "today") + ")" : "None yet (" + pl(i.since, "day") + " since created)"}</td></tr>
+<tr><td>In Attention needed</td><td>${flagged ? "Yes" : "No"}</td></tr></table>
+<p class="mut" style="margin-bottom:0">Missed: past due and not done. At risk: owner flagged a risk, or due within 7 days with no update for 5+ days. Needs update: no update for 10+ days.</p></div>
+<div class="box"><b>Stored data</b><p class="mut">Every field saved for this commitment in this browser.</p><table class="kv">${Object.keys(c).sort((x, y) => ((ORD.indexOf(x) + 1) || 99) - ((ORD.indexOf(y) + 1) || 99)).map(k => `<tr><td>${esc(NAMES[k] || k)}</td><td>${fmt(k, c[k])}</td></tr>`).join("")}</table></div></div>
+<div class="box"><b>Update history (${c.log.length})</b>${c.log.length ? `<table class="kv" style="margin-top:6px">${c.log.slice().reverse().map(e => `<tr><td>${esc(e.d)}</td><td>${e.k === "change" ? '<span class="tag">Change</span> ' : ""}${esc(e.t)}</td></tr>`).join("")}</table>` : '<p class="mut">No updates logged yet.</p>'}
+${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-height:70px" placeholder="Add a progress update, e.g. webhooks done, testing Thursday"></textarea><div class="row"><label><input type="checkbox" id="drisk"${c.risk ? " checked" : ""}> At risk</label><button class="p" id="dadd">Add update</button></div></div>`}</div>
+<div class="box"><b>Edit details</b><p class="mut">Edits are recorded in the history as changes. They don't count as a progress update, so they don't reset the "no update" clock.</p><div class="row">
+<input id="etitle" value="${esc(c.title)}" style="flex:1;min-width:220px" aria-label="Title"><select id="eteam" aria-label="Team">${TEAMS.map(t => `<option${t === c.team ? " selected" : ""}>${t}</option>`).join("")}</select><input id="eowner" value="${esc(c.owner)}" size="12" placeholder="Owner" aria-label="Owner"><input type="date" id="edue" value="${esc(c.due)}" aria-label="Due date"><button class="p" id="esave">Save changes</button></div></div>
+<div class="box"><div class="row">${c.done ? '<button id="dreopen">Reopen</button>' : '<button id="ddone">Mark done</button>'}<button id="dnudge">Draft nudge</button><button id="ddel">Delete</button></div><div id="dnout"></div></div>
+<details class="box"><summary><b>Raw saved record</b> <span class="mut">(exactly what's stored, for checking)</span></summary><pre>${esc(JSON.stringify(c, null, 2))}</pre></details>`;
+            const ch = t => c.log.push({ d: S.today, t, k: "change" }), fin = () => { save(); render() };
+            if ($("#dadd")) $("#dadd").onclick = () => { const t = $("#dnote").value.trim(); if (!t) { $("#dnote").focus(); return } c.log.push({ d: S.today, t }); c.risk = $("#drisk").checked; fin() };
+            $("#esave").onclick = () => {
+                const v = { title: $("#etitle").value.trim(), team: $("#eteam").value, owner: $("#eowner").value.trim() || "Unassigned", due: $("#edue").value }, L = { title: "Title", team: "Team", owner: "Owner", due: "Due date" };
+                if (!v.title || !v.due) { alert("Title and due date can't be empty."); return } let n = 0; Object.keys(v).forEach(k => { if (v[k] !== c[k]) { ch(L[k] + " changed from " + c[k] + " to " + v[k]); c[k] = v[k]; n++ } }); if (n) fin()
+            };
+            if ($("#ddone")) $("#ddone").onclick = () => { c.done = true; c.doneOn = S.today; c.log.push({ d: S.today, t: "Marked done" }); fin() };
+            if ($("#dreopen")) $("#dreopen").onclick = () => { c.done = false; c.doneOn = null; ch("Reopened"); fin() };
+            $("#dnudge").onclick = () => { const t = c.done ? "This commitment is done, so no nudge is needed." : nudge(c, i); $("#dnout").innerHTML = '<textarea id="dntxt" style="margin-top:10px;min-height:80px"></textarea><button id="dncp">Copy</button>'; $("#dntxt").value = t; $("#dncp").onclick = () => copy(t) };
+            $("#ddel").onclick = () => { if (confirm("Delete this commitment?")) { S.items = S.items.filter(x => x !== c); save(); location.hash = ""; render() } }
+        }
+        function route() { const m = location.hash.match(/^#task\/(.+)$/), on = !!m; $("#home").classList.toggle("hide", on); $("#detail").classList.toggle("hide", !on); if (on) rDetail(decodeURIComponent(m[1])) }
+        window.onhashchange = () => { route(); window.scrollTo(0, 0) };
+        function render() { $("#today").value = S.today; $("#ai").textContent = aiOn() ? "AI configured (the error message shows if it fails)" : "AI not connected, built-in fallbacks active"; rAttn(); rBoard(); route() }
+        let CH = [];
+        const viewing = () => { const m = location.hash.match(/^#task\/(.+)$/); return m ? S.items.find(c => c.id === decodeURIComponent(m[1])) : null };
+        function snapshot() {
+            return S.items.map(c => {
+                const i = info(c), lu = lastUp(c); return {
+                    id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due, created: c.created,
+                    status: i.needs && i.st === "on-track" ? "needs update" : LBL[i.st], reason: i.why || "", days_until_due: i.left, days_since_last_update: i.since, last_update: lu ? lu.d + ": " + lu.t : "none", owner_flagged_risk: c.risk, done_on: c.doneOn,
+                    recent_history: c.log.slice(-5).map(e => e.d + (e.k === "change" ? " [change] " : " ") + e.t)
+                }
+            })
+        }
+        function localAnswer(q) {
+            const ql = q.toLowerCase(), own = [...new Set(S.items.map(c => c.owner))].find(o => o && ql.includes(o.toLowerCase())), team = TEAMS.find(t => ql.includes(t.toLowerCase()));
+            let r = S.items.map(c => ({ c, i: info(c) })), h = "Commitments"; if (own) r = r.filter(x => x.c.owner === own); if (team) r = r.filter(x => x.c.team === team);
+            const mi = /miss|overdue|late/.test(ql), rk = /risk/.test(ql); if (mi && rk) { r = r.filter(x => x.i.st === "missed" || x.i.st === "at-risk"); h = "Missed or at risk" } else if (mi) { r = r.filter(x => x.i.st === "missed"); h = "Missed" } else if (/risk/.test(ql)) { r = r.filter(x => x.i.st === "at-risk"); h = "At risk" }
+            else if (/update|stale|chase|nudge|attention/.test(ql)) { r = r.filter(x => !x.c.done && (x.i.st !== "on-track" || x.i.needs)); h = "Needing attention" }
+            else if (/done|complete|finish/.test(ql)) { r = r.filter(x => x.c.done); h = "Done" }
+            else if (/week|soon|upcoming|next/.test(ql)) { r = r.filter(x => !x.c.done && x.i.left >= 0 && x.i.left <= 7); h = "Due in the next 7 days" }
+            else if (!own && !team) { const v = viewing(); if (v && /this|it\b/.test(ql)) r = r.filter(x => x.c === v); else return 'I can only answer simple questions without AI. Try asking about what\'s missed, at risk, due this week, needs chasing or done, or name a person or team.' }
+            const sc = (own ? " for " + own : "") + (team ? " in " + team : ""); if (!r.length) return "Nothing matches: " + h.toLowerCase() + sc + ".";
+            return h + sc + " (" + r.length + "):\n" + r.map(x => "- " + x.c.title + " (" + x.c.team + ", " + x.c.owner + ", due " + x.c.due + "): " + (x.i.needs && x.i.st === "on-track" ? "Needs update" : LBL[x.i.st]) + (x.i.why && !x.c.done ? ", " + x.i.why : "")).join("\n")
+        }
+        function linkify(t) {
+            const ts = S.items.slice().sort((a, b) => b.title.length - a.title.length); let h = esc(t); if (!ts.length) return h;
+            const rx = new RegExp(ts.map(c => esc(c.title).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g"); return h.replace(rx, m => { const c = ts.find(x => esc(x.title) === m); return `<a href="#task/${encodeURIComponent(c.id)}">${m}</a>` })
+        }
+        function rChat() {
+            const el = $("#cmsgs"), v = viewing(), sug = ["What's at risk or missed?", "Who should I chase this week?", "What's due in the next 7 days?", "Summarise Engineering"]; if (v) sug.unshift("Tell me about this task");
+            el.innerHTML = (CH.length ? "" : '<p class="mut" style="margin:0">Ask anything about the commitments on the board. Answers use only the data stored here.</p><div class="chips">' + sug.map(x => `<button type="button">${esc(x)}</button>`).join("") + "</div>") +
+                CH.map(m => m.r === "u" ? `<div class="msg u">${esc(m.t)}</div>` : `<div class="msg a">${m.wait ? '<span class="mut" style="margin:0">Thinking...</span>' : linkify(m.t) + (m.note ? `<span class="mut">${esc(m.note)}</span>` : "")}</div>`).join("");
+            el.querySelectorAll(".chips button").forEach(b => b.onclick = () => ask(b.textContent)); el.scrollTop = el.scrollHeight
+        }
+        async function ask(q) {
+            q = q.trim(); if (!q) return; const hist = CH.filter(m => !m.wait).slice(-6).map(m => (m.r === "u" ? "User: " : "Assistant: ") + m.t).join("\n");
+            CH.push({ r: "u", t: q }); const a = { r: "a", wait: true }; CH.push(a); rChat(); $("#cin").value = ""; const v = viewing();
+            try {
+                let t = await ai("You are the operations assistant for LightWork AI, a 20-30 person startup. You answer questions from the founders about team commitments and deadlines. Use ONLY the JSON data provided. Never invent tasks, people, dates or reasons. Status and reason are already calculated by fixed rules; repeat them, don't recalculate. If the data doesn't answer the question, say so plainly. Be brief: a sentence or two, or short lines starting with \"- \". Plain text only, no markdown, no bold. Write task titles exactly as they appear in the data. Refer to dates as given.",
+                    "Today is " + S.today + ".\nRules: Missed = past due and not done. At risk = owner flagged a risk, or due within 7 days with no update for 5+ days. Needs update = no update for 10+ days.\n" + (v ? 'The user is currently viewing the task "' + v.title + '" (id ' + v.id + '). "This task" means that one.\n' : "") + "Commitments JSON:\n" + JSON.stringify(snapshot()) + (hist ? "\n\nConversation so far:\n" + hist : "") + "\n\nQuestion: " + q);
+                a.t = t.replace(/\*\*|__|^#+\s*/gm, "").trim()
+            } catch (e) { a.t = localAnswer(q); a.note = aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Simple built-in answer." : "AI not connected. Simple built-in answer." }
+            a.wait = false; rChat()
+        }
+        const chatOpen = o => { $("#chat").classList.toggle("hide", !o); $("#cbtn").classList.toggle("hide", o); if (o) { rChat(); $("#cin").focus() } };
+        $("#cbtn").onclick = () => chatOpen(true); $("#cx").onclick = () => chatOpen(false); $("#cclr").onclick = () => { CH = []; rChat() };
+        $("#cform").onsubmit = e => { e.preventDefault(); if (!CH.some(m => m.wait)) ask($("#cin").value) };
+        document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#chat").classList.contains("hide")) chatOpen(false) });
+        window.addEventListener("hashchange", () => { if (!$("#chat").classList.contains("hide") && !CH.length) rChat() });
+        render(); $("#tabs button").click();
+    </script>
+</body>
+
+</html>
