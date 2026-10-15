@@ -467,9 +467,10 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             else if (!confirm("Delete this commitment?")) return; else S.items = S.items.filter(x => x !== c); save(); render()
         }
         const aiOn = shared;
-        async function ai(system, prompt, json) {
+        let RL = null; // latest rate-limit info reported by the Worker
+        async function ai(system, prompt, json, effort) {
             if (!aiOn()) throw 0; const to = 0;
-            try { const r = await api("ai", { method: "POST", body: JSON.stringify({ system, prompt, json: !!json }), timeout: 60000 }); const d = await r.json().catch(() => ({})); if (r.status === 401) lock("Enter the team password to continue."); if (!r.ok || !d.text) throw new Error(d.error || "HTTP " + r.status); return d.text } finally { clearTimeout(to) }
+            try { const r = await api("ai", { method: "POST", body: JSON.stringify({ system, prompt, json: !!json, effort }), timeout: 60000 }); const d = await r.json().catch(() => ({})); if (d.limits && d.limits.remainingTokens != null) RL = { ...d.limits, at: Date.now() }; if (r.status === 401) lock("Enter the team password to continue."); if (!r.ok || !d.text) throw new Error(d.error || "HTTP " + r.status); return d.text } finally { clearTimeout(to) }
         }
         const pj = t => { t = String(t || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""); try { return JSON.parse(t) } catch (e) { } const m = t.match(/[\[{][\s\S]*[\]}]/); if (!m) throw new SyntaxError("the AI's reply had no JSON"); try { return JSON.parse(m[0]) } catch (e) { try { return JSON.parse(m[0].replace(/,\s*([\]}])/g, "$1")) } catch (x) { throw e } } }, words = s => s.toLowerCase().match(/[a-z0-9]{3,}/g) || [], why = e => aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the simple built-in method. Check each row." : "AI not connected. Used the simple built-in method. Check each row.";
         function guess(l) { const w = new Set(words(l)); let b = "", bs = 0; open().forEach(c => { const s = words(c.title + " " + c.owner + " " + c.team).filter(x => w.has(x)).length; if (s > bs) { bs = s; b = c.id } }); return b }
@@ -568,9 +569,17 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             return { err: "unknown action type " + a.type }
         }
         const sleep = ms => new Promise(r => setTimeout(r, ms));
-        async function aiRetry(sys, prompt, onWait, json) {
+        const durMs = s => { const m = /^(?:(\d+)m)?(?:([\d.]+)s)?(?:([\d.]+)ms)?$/.exec(String(s || "")); return m ? ((+m[1] || 0) * 60000 + (parseFloat(m[2]) || 0) * 1000 + (parseFloat(m[3]) || 0)) : 0 };
+        // Waits just long enough for Groq's per-minute token allowance to cover the next request, instead of hitting the limit.
+        async function pace(chars, onWait) {
+            if (!RL || !RL.tokens) return; const need = Math.ceil(chars / 3.5) + 1500, since = Date.now() - RL.at, reset = durMs(RL.resetTokens) || 60000;
+            const used = RL.tokens - RL.remainingTokens, avail = RL.remainingTokens + used * Math.min(1, since / reset); if (avail >= need) return;
+            const w = Math.min(60000, Math.ceil(reset * (need - RL.remainingTokens) / Math.max(1, used) - since) + 300); if (w > 300) { onWait(w); await sleep(w) }
+        }
+        async function aiRetry(sys, prompt, onWait, json, effort) {
             for (let n = 0; ; n++) {
-                try { return await ai(sys, prompt, json) } catch (e) {
+                await pace(sys.length + prompt.length, onWait);
+                try { return await ai(sys, prompt, json, effort) } catch (e) {
                     const m = String(e && e.message || ""); if (n >= 4 || !/429|rate limit/i.test(m)) throw e;
                     const t = /try again in (?:(\d+)m)?([\d.]+)(ms|s)/i.exec(m), w = t ? Math.ceil(((+t[1] || 0) * 60 + parseFloat(t[2]) / (t[3] === "ms" ? 1000 : 1)) * 1000) + 500 : 10000 * (n + 1);
                     onWait(w); await sleep(w)
@@ -578,12 +587,12 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             }
         }
         // Asks for JSON. If the reply isn't valid JSON, tells the AI what went wrong and asks again (up to twice).
-        async function askJSON(sys, prompt, show) {
+        async function askJSON(sys, prompt, show, fixHint, effort) {
             let fix = "";
             for (let n = 0; ; n++) {
-                try { return pj(await aiRetry(sys, prompt + fix, w => show("Waiting " + Math.round(w / 1000) + "s for the AI rate limit..."), true)) } catch (e) {
+                try { return pj(await aiRetry(sys, prompt + fix, w => show("Pacing for the AI rate limit (" + Math.max(1, Math.round(w / 1000)) + "s)..."), true, effort)) } catch (e) {
                     const m = String(e && e.message || "AI error");
-                    if (n < 2 && (e instanceof SyntaxError || /json|failed to generate|unexpected token|expected/i.test(m))) { show("The AI's reply was garbled. Asking it to try again..."); fix = "\n\nYOUR PREVIOUS REPLY WAS NOT VALID JSON (" + m.slice(0, 160) + "). Reply again with ONLY valid JSON. Escape any double quotes inside strings, and keep it short: at most 10 actions."; continue }
+                    if (n < 2 && (e instanceof SyntaxError || /json|failed to generate|unexpected token|expected/i.test(m))) { show("The AI's reply was garbled. Asking it to try again..."); fix = "\n\nYOUR PREVIOUS REPLY WAS NOT VALID JSON (" + m.slice(0, 160) + "). Reply again with ONLY valid JSON. Escape any double quotes inside strings. " + (fixHint || "Keep it short: at most 10 actions."); continue }
                     throw e
                 }
             }
@@ -597,23 +606,27 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
 {"type":"add_team","name":"<team name>"}  (only if the text clearly names a team that isn't in the list)
 {"type":"rename_team","from":"<existing team>","to":"<new name>"}  (only if the text says a team has been renamed)
 {"type":"ask","id":"<task id or ref, or empty>","question":"<one short question for the user>"}`;
-        const RULES = () => `Today is ${realToday()}. Resolve relative dates such as "end of month", "next Friday" or "Q4" to YYYY-MM-DD. A date without a year means its next occurrence.
+        const RULES = () => `Today is ${realToday()}. Resolve relative dates such as "end of month", "next Friday" or "Q4" to YYYY-MM-DD. A day or date without a month or year means the matching date closest to today, which may be in the past (for example something overdue, or completed earlier). Use any weekday given (e.g. "Tuesday the 13th") to confirm the date.
 Status (on track, at risk, missed) is calculated automatically from these fields. Set risk only when the text describes a delay, blocker or concern. Mark done only when the work is clearly complete.
 Teams: ${teams().join(", ")}. Map synonyms to the closest existing team (for example "eng" or "dev" to Engineering, "CS" to Customer Success, "commercial" or "BD" to Sales) before considering add_team.`;
+        const LIST_SYS = `List every separate goal, task, deliverable, fix or piece of work in the text, including finished ones and ones mentioned in passing. Do not merge goals. Reply with ONLY a JSON object: {"goals":[{"goal":"<short title>"}]}`;
         const PLAN_SYS = () => `You read messy text (lists, notes, emails, tables) and find every goal or commitment in it. Facts about one goal are often spread across the text: an owner list, a dates table, a later paragraph, a "who's doing what" section. For each goal, gather EVERY fact from ANYWHERE in the text.
-Reply with ONLY a JSON object: {"goals":[{"goal":"<short title>","team":"<team or empty>","owner":"<name or empty>","due":"<YYYY-MM-DD or empty>","updates":[{"date":"<YYYY-MM-DD or empty>","note":"<progress, blocker or status>"}],"at_risk":true|false,"done":true|false,"done_on":"<YYYY-MM-DD or empty>","missing":"<which of team, owner, due are genuinely stated nowhere in the text, or empty>"}]}
+Be exhaustive: every separate deliverable, task, launch, document, fix or piece of work with an owner, team or deadline is its own goal, even if it is mentioned briefly or in passing. Work that is already finished still counts. A follow-on task mentioned in the same sentence as another is a separate goal. Do not merge goals. Before replying, re-read the text from start to end and check you haven't missed one.
+Reply with ONLY a JSON object: {"count":<number of goals>,"goals":[{"goal":"<short title>","team":"<team or empty>","owner":"<name or empty>","due":"<YYYY-MM-DD or empty>","updates":[{"date":"<YYYY-MM-DD or empty>","note":"<progress, blocker or status>"}],"at_risk":true|false,"done":true|false,"done_on":"<YYYY-MM-DD or empty>","missing":"<which of team, owner, due are genuinely stated nowhere in the text, or empty>"}]}
 ${RULES()}`;
         const IMP_SYS = () => `You are an operations agent that imports goals into the team commitment tracker for LightWork AI, a 20-30 person startup.
-You are given the source text and a PLAN listing each goal with the facts already gathered from the whole text. Work through the plan ONE GOAL PER STEP, in order. For each goal: create the task (or use the existing task if the board already has it), then apply every fact: owner, due date, team, each progress update (with its date), risk, completion.
+You are given the source text and the GOALS FOR THIS STEP (up to 4), each with the facts already gathered from the whole text. Handle every goal in this step fully: create the task (or use the existing task if the board already has it), then apply every fact: owner, due date, team, each progress update (with its date), risk, completion.
 Use only facts from the source text, the plan or the user's answers. Never invent. Before asking a question, re-read the WHOLE source text: only ask about something important (due date, owner, team) that is genuinely stated nowhere.
-Reply with ONLY a JSON object: {"note":"<a few words on what you are doing>","actions":[...],"finished":true|false}. At most 12 actions per reply.
+Group similar questions: for example, ask ONE question listing every task that has no owner, rather than one question per task.
+Reply with ONLY a JSON object: {"note":"<a few words>","handled":[<numbers of the goals in this step that you fully handled>],"actions":[...],"finished":true|false}. At most 24 actions per reply.
 ${ACTIONS()}
 ${RULES()}
-A ref you create can be used as the id in later actions, in the same reply or later ones. You will see the result of every action; if one failed, fix it next step. Set "finished": true only when every goal in the plan has been fully handled.`;
-        const REVIEW_SYS = () => `You check an import agent's questions before they are shown to a busy founder. For each question, search the WHOLE source text. If the text already answers it (even indirectly, or in a different section), return the actions that apply that answer and drop the question. Keep only questions the text genuinely cannot answer.
+A ref you create can be used as the id in later actions, in the same reply or later ones. If an action failed in the last step, you will see the error: fix it. The app tracks which goals are done and gives you the next ones. "finished" only matters when there is no goal list: then set it true once everything in the text is handled.`;
+        const REVIEW_SYS = () => `You check an import agent's questions before they are shown to a busy founder. For each question, search the WHOLE source text. If the text already answers it (even indirectly, or in a different section), return the actions that apply that answer and drop the question. Keep only questions the text genuinely cannot answer, and merge near-duplicates (keep one of them).
 Reply with ONLY a JSON object: {"actions":[...],"keep":[<numbers of the questions to keep>]}
 ${ACTIONS().replace(/\n\{"type":"ask"[^\n]*/, "")}
 ${RULES()}`;
+        const board = (items, full) => JSON.stringify(items.map(c => { if (!full || !full.has(c.id)) return { id: c.id, team: c.team, title: c.title }; const lu = lastUp(c); return { id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due || "", at_risk: c.risk, done: c.done, last_update: lu ? lu.d + ": " + lu.t : "" } }));
         const brief = items => JSON.stringify(items.map(c => { const lu = lastUp(c); return { id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due || "", at_risk: c.risk, done: c.done, last_update: lu ? lu.d + ": " + lu.t : "" } }));
         let IMP = null;
         async function runAgent(src, answers, showLog) {
@@ -628,25 +641,54 @@ ${RULES()}`;
             // 1. Plan: gather the facts for every goal from the whole text.
             if (!answers) {
                 show("Reading the text and listing the goals...");
-                try { const r = await askJSON(PLAN_SYS(), "SOURCE TEXT:\n" + src + "\n\nTASKS ALREADY ON THE BOARD:\n" + brief(st.items), show); if (Array.isArray(r && r.goals) && r.goals.length) { plan = r.goals.slice(0, 30); log.push({ t: "Found " + plan.length + " goal" + (plan.length === 1 ? "" : "s") + " in the text" }) } }
-                catch (e) { if (/wrong password|401/i.test(e.message || "")) return { acts, qs, log, stop: e.message } }
+                try {
+                    const r = await askJSON(PLAN_SYS(), "SOURCE TEXT:\n" + src + "\n\nTASKS ALREADY ON THE BOARD:\n" + board(st.items), show, "Include EVERY goal; keep each goal's fields brief.", "medium");
+                    if (Array.isArray(r && r.goals) && r.goals.length) { plan = r.goals.slice(0, 40).map((g, k) => ({ n: k + 1, ...g })); log.push({ t: "Found " + plan.length + " goal" + (plan.length === 1 ? "" : "s") + " in the text" }) }
+                } catch (e) { if (/wrong password|401/i.test(e.message || "")) return { acts, qs, log, stop: e.message } }
+                // Fallback: a titles-only list is short and rarely fails, and still lets the app check every goal gets handled.
+                if (!plan) {
+                    show("Listing the goals (simpler pass)...");
+                    try { const r = await askJSON(LIST_SYS, "SOURCE TEXT:\n" + src, show, "Include EVERY goal, titles only."); if (Array.isArray(r && r.goals) && r.goals.length) { plan = r.goals.slice(0, 40).map((g, k) => ({ n: k + 1, goal: String(g && g.goal || g) })); log.push({ t: "Found " + plan.length + " goal" + (plan.length === 1 ? "" : "s") + " in the text" }) } } catch (e) { }
+                    if (!plan) log.push({ w: 1, t: "Couldn't list the goals up front, so worked straight from the text. Check nothing was missed." })
+                }
             }
-            // 2. Act: one goal per step, with feedback on every action.
-            const n = answers ? answers.length : plan ? plan.length : src.split(/\n+/).filter(l => l.trim()).length, max = Math.min(40, n * 2 + 4);
+            // 2. Act: up to 4 goals per step. Each request carries only what that step needs, to stay under the per-minute token limit.
+            const BATCH = 4, tries = {}, handled = new Set(), skipped = [];
+            const remaining = () => plan ? plan.filter(g => !handled.has(g.n) && !skipped.includes(g.n)) : [];
+            const max = answers ? Math.min(20, answers.length + 4) : plan ? Math.ceil(plan.length / BATCH) * 2 + 4 : 20;
+            let touched = new Set(), lastErrs = [], nApplied = 0, empties = 0;
             for (let step = 1; step <= max; step++) {
-                show(answers ? "Applying your answers (step " + step + ")..." : "Working on goal " + Math.min(step, plan ? plan.length : step) + (plan ? " of " + plan.length : "") + "...");
-                const prompt = "SOURCE TEXT:\n" + src + (plan ? "\n\nPLAN (facts gathered from the whole text):\n" + JSON.stringify(plan) : "") +
-                    (answers ? "\n\nTHE USER HAS ANSWERED YOUR QUESTIONS. Apply these answers to the tasks on the board. Ask again only if an answer is itself unclear.\n" + answers.map(x => "Q: " + x.q + (x.id ? " (task " + x.id + ")" : "") + "\nA: " + x.a).join("\n") : "") +
-                    "\n\nBOARD NOW:\n" + brief(st.items) + "\n\nACTIONS SO FAR AND THEIR RESULTS:\n" + (hist.length ? hist.slice(-60).join("\n") : "(none yet)") + (qs.length ? "\n\nQUESTIONS ALREADY QUEUED:\n" + qs.map(x => "- " + x.q).join("\n") : "") + "\n\nStep " + step + " of at most " + max + ". Handle the next goal, or finish.";
-                let r; try { r = await askJSON(IMP_SYS(), prompt, show) } catch (e) { stop = (e && e.message) || "AI error"; break }
-                const list = Array.isArray(r && r.actions) ? r.actions.slice(0, 25) : []; run(list);
-                if (r && r.finished === true) break; if (!list.length) break; if (step === max) stop = "reached the step limit";
+                const batch = remaining().slice(0, BATCH); if (plan && !answers && !batch.length) break;
+                batch.forEach(g => { tries[g.n] = (tries[g.n] || 0) + 1 });
+                show(answers ? "Applying your answers..." : plan ? "Working through the goals: " + handled.size + " of " + plan.length + " done..." : "Working through the text (step " + step + ")...");
+                // Full details only for tasks this step is likely to touch; everything else as id, team and title.
+                const full = new Set(touched); if (answers) answers.forEach(x => x.id && full.add(x.id));
+                batch.forEach(g => { const t = String(g.goal || "").toLowerCase(); st.items.forEach(c => { if (t && (c.title.toLowerCase() === t || words(c.title).filter(w => words(t).includes(w)).length >= 2)) full.add(c.id) }) });
+                const prompt = "SOURCE TEXT:\n" + src +
+                    (answers ? "\n\nTHE USER HAS ANSWERED YOUR QUESTIONS. Apply these answers to the tasks on the board. Ask again only if an answer is itself unclear.\n" + answers.map(x => "Q: " + x.q + (x.id ? " (task " + x.id + ")" : "") + "\nA: " + x.a).join("\n")
+                        : plan ? "\n\nGOALS FOR THIS STEP:\n" + JSON.stringify(batch.map(g => { const { n, ...rest } = g; return { n, ...rest } })) + "\n(" + (remaining().length - batch.length) + " more goals will follow in later steps.)" : "\n\nHandle up to " + BATCH + " goals from the text that are not on the board yet.") +
+                    "\n\nBOARD (tasks with full details are the ones relevant to this step):\n" + board(st.items, full) +
+                    "\n\nPROGRESS: " + nApplied + " actions applied so far." + (lastErrs.length ? "\nERRORS FROM YOUR LAST STEP (fix these):\n" + lastErrs.join("\n") : "") +
+                    (qs.length ? "\n\nQUESTIONS ALREADY QUEUED (don't repeat):\n" + qs.map(x => "- " + x.q).join("\n") : "");
+                const h0 = hist.length, a0 = acts.length;
+                let r; try { r = await askJSON(IMP_SYS(), prompt, show, "At most 24 actions.", "low") } catch (e) { stop = (e && e.message) || "AI error"; break }
+                const list = Array.isArray(r && r.actions) ? r.actions.slice(0, 30) : []; run(list);
+                nApplied = acts.length; lastErrs = hist.slice(h0).filter(l => / -> ERROR: /.test(l)).slice(0, 10);
+                touched = new Set(acts.slice(a0).map(x => refs[x.id] || x.id || refs[x.ref] || x.__id).filter(Boolean));
+                if (plan && !answers) {
+                    // The app, not the AI, decides when the import is complete.
+                    (Array.isArray(r && r.handled) ? r.handled : []).forEach(k => { if (batch.some(g => g.n === +k)) handled.add(+k) });
+                    batch.forEach(g => { if (!handled.has(g.n) && tries[g.n] >= 3) skipped.push(g.n) });
+                    empties = list.length ? 0 : empties + 1; if (empties >= 2) { remaining().forEach(g => skipped.push(g.n)); break }
+                } else if ((r && r.finished === true) || !list.length) break;
+                if (step === max) stop = "reached the step limit";
             }
+            if (skipped.length) log.push({ w: 1, t: "These goals may not have been fully handled: " + plan.filter(g => skipped.includes(g.n)).map(g => g.goal).join("; ") });
             // 3. Review: drop questions the text already answers, and apply those answers instead.
             if (qs.length && !stop) {
                 show("Checking its questions against the text...");
                 try {
-                    const r = await askJSON(REVIEW_SYS(), "SOURCE TEXT:\n" + src + "\n\nBOARD NOW:\n" + brief(st.items) + "\n\nQUESTIONS:\n" + qs.map((x, k) => k + ". " + x.q + (x.id ? " (task " + x.id + ")" : "")).join("\n"), show);
+                    const r = await askJSON(REVIEW_SYS(), "SOURCE TEXT:\n" + src + "\n\nBOARD:\n" + board(st.items, new Set(qs.map(x => x.id).filter(Boolean))) + "\n\nQUESTIONS:\n" + qs.map((x, k) => k + ". " + x.q + (x.id ? " (task " + x.id + ")" : "")).join("\n"), show, "", "medium");
                     const before = qs.length; run((Array.isArray(r && r.actions) ? r.actions : []).filter(a => a && a.type !== "ask").slice(0, 30));
                     if (Array.isArray(r && r.keep)) { const keep = qs.filter((x, k) => r.keep.map(Number).includes(k)); qs.length = 0; keep.forEach(x => qs.push(x)) }
                     if (before > qs.length) log.push({ t: "Answered " + (before - qs.length) + " of its own question" + (before - qs.length === 1 ? "" : "s") + " from the text" })
@@ -668,12 +710,12 @@ ${RULES()}`;
             if (!answers && !res.acts.length && res.stop) { $("#ibtn").disabled = false; return fallbackImport(src, new Error(res.stop)) }
             const u = await commitActs(res.acts); $("#ibtn").disabled = false;
             const qs = (round || 1) >= 3 ? [] : res.qs.map(x => ({ ...x, id: u.refs[x.id] || x.id }));
-            const nNew = u.created.length, nUpd = Object.keys(u.before).length, done = res.log.filter(l => !l.e);
+            const nNew = u.created.length, nUpd = Object.keys(u.before).length, done = res.log.filter(l => !l.e && !l.w), warn = res.log.filter(l => l.w);
             IMP = { src, before: u.before, created: u.created, teamsBefore: u.teamsBefore, qs, round: round || 1 };
             $("#ist").textContent = res.stop ? "The agent stopped early (" + res.stop + "). Everything it did up to then is saved." : "";
             const tl = id => { const c = S.items.find(x => x.id === id); return c ? `<a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a>` : "" };
             $("#iout").innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><b>${answers ? "Answers applied" : "Import complete"}: ${nNew} created, ${nUpd} existing updated</b>${nNew || nUpd ? '<span id="iundo"><button>Undo</button></span>' : ""}</div>
-${done.length ? `<details${done.length <= 12 ? " open" : ""}><summary class="mut">What the agent did (${done.length})</summary><ul class="ilog">${done.map(l => `<li>${esc(l.t)}</li>`).join("")}</ul></details>` : '<p class="mut">No changes were needed.</p>'}</div>` +
+${warn.map(l => `<div class="flag">${esc(l.t)}</div>`).join("")}${done.length ? `<details${done.length <= 12 ? " open" : ""}><summary class="mut">What the agent did (${done.length})</summary><ul class="ilog">${done.map(l => `<li>${esc(l.t)}</li>`).join("")}</ul></details>` : '<p class="mut">No changes were needed.</p>'}</div>` +
                 (qs.length ? `<div class="card" id="iqs"><b>The agent has ${qs.length} question${qs.length > 1 ? "s" : ""}</b><p class="mut" style="margin:2px 0 4px">Your tasks are already saved. Answer what you can and the agent will update them. Leave any blank to keep things as they are.</p>` +
                     qs.map((x, k) => `<div class="qa">${x.id ? tl(x.id) + "<br>" : ""}<label for="qa${k}">${esc(x.q)}</label><input id="qa${k}" autocomplete="off"></div>`).join("") +
                     `<div class="row" style="margin-top:8px"><button class="p" id="iansw">Apply answers</button><button id="iskip">Keep as is</button></div></div>` : "");

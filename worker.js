@@ -92,32 +92,44 @@ async function relayAI(request, env, json_) {
   if (text.length > MAX_BODY) return json_({ error: "request too large" }, 413);
   let body;
   try { body = JSON.parse(text); } catch { return json_({ error: "invalid JSON" }, 400); }
-  const { system, prompt, json } = body || {};
+  const { system, prompt, json, effort } = body || {};
   if (typeof prompt !== "string" || !prompt) return json_({ error: "missing prompt" }, 400);
+  const model = env.MODEL || "openai/gpt-oss-120b";
+  // gpt-oss models accept a reasoning effort. Low effort means fewer hidden reasoning tokens, which count towards the rate limit.
+  const useEffort = /gpt-oss/i.test(model) && ["low", "medium", "high"].includes(effort);
 
-  const call = (jsonMode) => fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const call = (extras) => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.GROQ_API_KEY },
     body: JSON.stringify({
-      model: env.MODEL || "openai/gpt-oss-120b",
+      model,
       temperature: 0.2,
-      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+      max_completion_tokens: 8192,
+      ...(extras && json ? { response_format: { type: "json_object" } } : {}),
+      ...(extras && useEffort ? { reasoning_effort: effort } : {}),
       messages: [
         ...(system ? [{ role: "system", content: String(system) }] : []),
         { role: "user", content: prompt },
       ],
     }),
   });
-  // JSON mode makes Groq return valid JSON. If the model doesn't support it, ask again without it.
-  let r = await call(!!json);
+  // JSON mode makes Groq return valid JSON. If the model rejects JSON mode or the effort setting, ask again without them.
+  let r = await call(true);
   let d = await r.json().catch(() => ({}));
   const msg = (d.error && d.error.message) || "";
-  if (json && r.status === 400 && /response_format|json_object|not supported/i.test(msg) && !/json_validate_failed|failed to generate/i.test(msg)) {
+  if ((json || useEffort) && r.status === 400 && /response_format|json_object|reasoning_effort|not supported/i.test(msg) && !/json_validate_failed|failed to generate/i.test(msg)) {
     r = await call(false);
     d = await r.json().catch(() => ({}));
   }
-  if (!r.ok) return json_({ error: "groq " + r.status + ((d.error && d.error.message) ? ": " + d.error.message.slice(0, 400) : "") }, 502);
+  // Groq reports how much of the per-minute allowance is left; the app uses this to pace itself.
+  const h = (k) => r.headers.get(k);
+  const limits = {
+    tokens: Number(h("x-ratelimit-limit-tokens")) || null,
+    remainingTokens: h("x-ratelimit-remaining-tokens") == null ? null : Number(h("x-ratelimit-remaining-tokens")),
+    resetTokens: h("x-ratelimit-reset-tokens") || null,
+  };
+  if (!r.ok) return json_({ error: "groq " + r.status + ((d.error && d.error.message) ? ": " + d.error.message.slice(0, 400) : ""), limits }, 502);
   const out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
-  if (!out) return json_({ error: "empty AI response" }, 502);
-  return json_({ text: out });
+  if (!out) return json_({ error: "empty AI response", limits }, 502);
+  return json_({ text: out, usage: d.usage || null, limits });
 }

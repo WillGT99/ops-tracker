@@ -44,7 +44,7 @@ Sign in with the team password. Click **Import goals** and paste a list of goals
 - If two people save at the same moment, the second change is rejected and that person is asked to redo it. Other people's changes appear within a minute, or when you return to the tab.
 - The daily check is a button, not a scheduled job.
 - Chat history is cleared when the page reloads.
-- The import agent makes one AI call per goal, so a long list can take a while on Groq's free tier, which limits requests per minute. The app waits and retries automatically.
+- Groq's free tier allows 8,000 tokens a minute. The import agent handles up to 4 goals per AI call, keeps each request small, and paces itself using the remaining allowance Groq reports, so a 16-goal update takes about 5 calls (roughly 1 to 2 minutes).
 - The password is remembered in the browser until you sign out, so sign out on shared computers.
 
 ## Setup
