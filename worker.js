@@ -86,30 +86,38 @@ async function writeState(request, env, json) {
   return json({ error: "conflict", ...(await readState(env)) }, 409);
 }
 
-async function relayAI(request, env, json) {
-  if (!env.GROQ_API_KEY) return json({ error: "GROQ_API_KEY is not set on the Worker" }, 500);
+async function relayAI(request, env, json_) {
+  if (!env.GROQ_API_KEY) return json_({ error: "GROQ_API_KEY is not set on the Worker" }, 500);
   const text = await request.text();
-  if (text.length > MAX_BODY) return json({ error: "request too large" }, 413);
+  if (text.length > MAX_BODY) return json_({ error: "request too large" }, 413);
   let body;
-  try { body = JSON.parse(text); } catch { return json({ error: "invalid JSON" }, 400); }
-  const { system, prompt } = body || {};
-  if (typeof prompt !== "string" || !prompt) return json({ error: "missing prompt" }, 400);
+  try { body = JSON.parse(text); } catch { return json_({ error: "invalid JSON" }, 400); }
+  const { system, prompt, json } = body || {};
+  if (typeof prompt !== "string" || !prompt) return json_({ error: "missing prompt" }, 400);
 
-  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const call = (jsonMode) => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.GROQ_API_KEY },
     body: JSON.stringify({
       model: env.MODEL || "openai/gpt-oss-120b",
       temperature: 0.2,
+      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
       messages: [
         ...(system ? [{ role: "system", content: String(system) }] : []),
         { role: "user", content: prompt },
       ],
     }),
   });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) return json({ error: "groq " + r.status + ((d.error && d.error.message) ? ": " + d.error.message.slice(0, 400) : "") }, 502);
+  // JSON mode makes Groq return valid JSON. If the model doesn't support it, ask again without it.
+  let r = await call(!!json);
+  let d = await r.json().catch(() => ({}));
+  const msg = (d.error && d.error.message) || "";
+  if (json && r.status === 400 && /response_format|json_object|not supported/i.test(msg) && !/json_validate_failed|failed to generate/i.test(msg)) {
+    r = await call(false);
+    d = await r.json().catch(() => ({}));
+  }
+  if (!r.ok) return json_({ error: "groq " + r.status + ((d.error && d.error.message) ? ": " + d.error.message.slice(0, 400) : "") }, 502);
   const out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
-  if (!out) return json({ error: "empty AI response" }, 502);
-  return json({ text: out });
+  if (!out) return json_({ error: "empty AI response" }, 502);
+  return json_({ text: out });
 }

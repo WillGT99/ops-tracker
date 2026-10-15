@@ -332,7 +332,7 @@
         #lock.hide{display:none}#lock .box{width:100%;max-width:380px}#lock input{width:100%;margin:10px 0}
         .err{color:var(--bad);font-size:13px}#banner{border-color:var(--warn)}#banner.bad{border-color:var(--bad)}
         .ilog{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--mut)}.ilog li{margin:2px 0}.ilog li.e{color:var(--bad)}
-        .qa{border-top:1px solid var(--line);padding:8px 0}.qa input{width:100%;margin-top:4px}
+        .qa{border-top:1px solid var(--line);padding:8px 0}button:disabled{opacity:.45;cursor:not-allowed}#tlist td{vertical-align:middle}.qa input{width:100%;margin-top:4px}
     </style>
 </head>
 
@@ -365,6 +365,8 @@
                         id="ist"></span></div>
                 <div id="iout"></div>
             </section>
+            <section id="t4" class="box hide"><p class="mut">Teams used on the board and by the AI. Renaming a team moves its tasks with it. The import agent can also add teams it finds in your text.</p><div id="tlist"></div>
+                <div class="row" style="margin-top:10px"><input id="tnew" placeholder="New team name" maxlength="40" aria-label="New team name"><button class="p" id="tadd">Add team</button><span class="err" id="terr"></span></div></section>
             <section id="t3" class="box hide">
                 <div class="row"><button class="p" id="sbtn">Generate weekly summary</button><button
                         id="scopy">Copy</button><span class="mut" id="sst"></span></div>
@@ -386,13 +388,15 @@
     </div>
     <script>
         const WORKER_URL = "https://lightwork.willgthompson1999.workers.dev/";
-        const TEAMS = ["Engineering", "Product", "Commercial", "Operations"], KEY = "lw_ops_v1";
+        const DEFAULT_TEAMS = ["Leadership", "Engineering", "Product", "Design", "Data", "Sales", "Marketing", "Customer Success", "Operations", "Finance", "People"], KEY = "lw_ops_v1";
         const $ = s => document.querySelector(s), esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
         const LBL = { "on-track": "On track", "at-risk": "At risk", missed: "Missed", done: "Done" };
         const realToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10) };
         const D = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)), diff = (a, b) => Math.round((D(a) - D(b)) / 864e5), add = (s, n) => new Date(D(s) + n * 864e5).toISOString().slice(0, 10);
         const PWK = "lw_pw";
         let S = { items: [] }, VER = 0, PW = (() => { try { return localStorage.getItem(PWK) || "" } catch (e) { return "" } })(), saving = false, again = false;
+        // The team list is shared data. Any team a task uses is always included.
+        const teams = () => { const t = Array.isArray(S.teams) && S.teams.length ? S.teams.slice() : DEFAULT_TEAMS.slice(); S.items.forEach(c => { if (c.team && !t.includes(c.team)) t.push(c.team) }); return t };
         const lastUp = c => { const u = c.log.filter(e => e.k !== "change"); return u[u.length - 1] };
         const open = () => S.items.filter(c => !c.done);
         const shared = () => WORKER_URL && !WORKER_URL.startsWith("PASTE");
@@ -456,18 +460,18 @@
 <div class="row" style="margin-top:6px">${c.done ? "" : `<button onclick="act('${c.id}','done')">Mark done</button><button onclick="act('${c.id}','note')">Add note</button>`}<button onclick="act('${c.id}','del')">Delete</button></div>
 ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</summary>${c.log.slice().reverse().map(e => `<div class="mut">${e.d}: ${e.k === "change" ? "(change) " : ""}${e.src === "ai" ? "(AI) " : ""}${esc(e.t)}</div>`).join("")}</details>` : ""}</div>`
         }
-        function rBoard() { $("#t0").innerHTML = (S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>') + '<div class="grid">' + TEAMS.map(t => `<div class="box"><b>${t}</b>${S.items.filter(c => c.team === t).map(card).join("") || '<p class="mut">No commitments yet. Use Import goals.</p>'}</div>`).join("") + "</div>" }
+        function rBoard() { $("#t0").innerHTML = (S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>') + '<div class="grid">' + teams().filter(t => S.items.some(c => c.team === t)).map(t => `<div class="box"><b>${t}</b>${S.items.filter(c => c.team === t).map(card).join("") || '<p class="mut">No commitments yet. Use Import goals.</p>'}</div>`).join("") + "</div>" }
         function act(id, a) {
             const c = S.items.find(x => x.id === id); if (a === "done") { c.done = true; c.doneOn = realToday(); c.log.push({ d: realToday(), t: "Marked done" }) }
             else if (a === "note") { const t = prompt('Update for "' + c.title + '"'); if (!t) return; c.log.push({ d: realToday(), t }); c.risk = confirm("Is it at risk?\nOK = at risk, Cancel = on track") }
             else if (!confirm("Delete this commitment?")) return; else S.items = S.items.filter(x => x !== c); save(); render()
         }
         const aiOn = shared;
-        async function ai(system, prompt) {
+        async function ai(system, prompt, json) {
             if (!aiOn()) throw 0; const to = 0;
-            try { const r = await api("ai", { method: "POST", body: JSON.stringify({ system, prompt }), timeout: 30000 }); const d = await r.json().catch(() => ({})); if (r.status === 401) lock("Enter the team password to continue."); if (!r.ok || !d.text) throw new Error(d.error || "HTTP " + r.status); return d.text } finally { clearTimeout(to) }
+            try { const r = await api("ai", { method: "POST", body: JSON.stringify({ system, prompt, json: !!json }), timeout: 60000 }); const d = await r.json().catch(() => ({})); if (r.status === 401) lock("Enter the team password to continue."); if (!r.ok || !d.text) throw new Error(d.error || "HTTP " + r.status); return d.text } finally { clearTimeout(to) }
         }
-        const pj = t => JSON.parse(t.match(/[\[{][\s\S]*[\]}]/)[0]), words = s => s.toLowerCase().match(/[a-z0-9]{3,}/g) || [], why = e => aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the simple built-in method. Check each row." : "AI not connected. Used the simple built-in method. Check each row.";
+        const pj = t => { t = String(t || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""); try { return JSON.parse(t) } catch (e) { } const m = t.match(/[\[{][\s\S]*[\]}]/); if (!m) throw new SyntaxError("the AI's reply had no JSON"); try { return JSON.parse(m[0]) } catch (e) { try { return JSON.parse(m[0].replace(/,\s*([\]}])/g, "$1")) } catch (x) { throw e } } }, words = s => s.toLowerCase().match(/[a-z0-9]{3,}/g) || [], why = e => aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the simple built-in method. Check each row." : "AI not connected. Used the simple built-in method. Check each row.";
         function guess(l) { const w = new Set(words(l)); let b = "", bs = 0; open().forEach(c => { const s = words(c.title + " " + c.owner + " " + c.team).filter(x => w.has(x)).length; if (s > bs) { bs = s; b = c.id } }); return b }
         let UNDO = null;
         const ASKK = "lw_confirm_all", ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -522,37 +526,40 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             if (!s) return ""; if (/end of (the )?month/i.test(s)) { const d = new Date(D(realToday())); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) }
             let t = Date.parse(s + " " + realToday().slice(0, 4) + " UTC"); if (isNaN(t)) t = Date.parse(s + " UTC"); return isNaN(t) ? "" : new Date(t).toISOString().slice(0, 10)
         }
-        const tm = p => TEAMS.find(t => t.toLowerCase().slice(0, 2) === p.trim().toLowerCase().slice(0, 2)) || TEAMS[0];
+        const tm = p => teams().find(t => t.toLowerCase().slice(0, 2) === p.trim().toLowerCase().slice(0, 2)) || teams()[0];
         // ---------- Import agent ----------
         const newId = () => "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const okDate = (d, past) => ISO.test(d || "") && !isNaN(D(d)) && (!past || d <= realToday());
         const FN = { owner: "Owner", due: "Due date", team: "Team", title: "Title" };
-        // Runs one agent action against a task list. All validation is fixed code, not AI.
-        function execA(items, a, refs, created) {
-            const d = realToday(), tag = { src: "ai" }, rid = id => refs[id] || id;
+        // Runs one agent action against a state {items, teams}. All validation is fixed code, not AI.
+        function execA(st, a, refs, created) {
+            const d = realToday(), tag = { src: "ai" }, rid = id => refs[id] || id, teamOf = v => st.teams.find(t => t.toLowerCase() === String(v || "").trim().toLowerCase());
+            const noTeam = v => ({ err: "unknown team \"" + v + "\". Use one of: " + st.teams.join(", ") + ". If the text clearly names a different team, add it first with add_team" });
+            if (a.type === "add_team") { const nm = String(a.name || "").trim().slice(0, 40); if (!nm) return { err: "name is required" }; if (teamOf(nm)) return { ok: "team already exists" }; st.teams.push(nm); return { ok: "added", text: "Added team “" + nm + "”" } }
+            if (a.type === "rename_team") { const old = teamOf(a.from), nu = String(a.to || "").trim().slice(0, 40); if (!old) return { err: "no team called " + a.from }; if (!nu) return { err: "new name is required" }; if (teamOf(nu)) return { err: "a team called " + nu + " already exists" }; st.teams = st.teams.map(t => t === old ? nu : t); st.items.forEach(c => { if (c.team === old) { c.team = nu; c.log.push({ d, t: "Team renamed from " + old + " to " + nu, k: "change", ...tag }) } }); return { ok: "renamed", text: "Renamed team " + old + " to " + nu } }
             if (a.type === "create_task") {
                 const title = String(a.title || "").trim(); if (!title) return { err: "title is required" };
-                const dup = items.find(x => x.title.trim().toLowerCase() === title.toLowerCase());
+                const dup = st.items.find(x => x.title.trim().toLowerCase() === title.toLowerCase());
                 if (dup) { if (a.ref) refs[a.ref] = dup.id; return { err: "a task with this title already exists (id " + dup.id + "); " + (a.ref ? "ref " + a.ref + " now points to it, " : "") + "update it instead" } }
-                const team = TEAMS.find(t => t.toLowerCase() === String(a.team || "").trim().toLowerCase());
-                if (!team) return { err: "team must be one of " + TEAMS.join(", ") };
+                const team = teamOf(a.team); if (!team) return noTeam(a.team);
                 if (a.due && !okDate(a.due)) return { err: "due must be a real date as YYYY-MM-DD, or empty" };
                 const c = { id: a.__id || (a.__id = newId()), team, title, owner: String(a.owner || "").trim() || "Unassigned", due: a.due || "", created: d, log: [], risk: false, done: false, doneOn: null };
-                items.push(c); created.push(c.id); if (a.ref) refs[a.ref] = c.id;
+                st.items.push(c); created.push(c.id); if (a.ref) refs[a.ref] = c.id;
                 return { ok: "created " + c.id, text: "Created “" + title + "” (" + team + ", " + c.owner + ", " + (c.due ? "due " + c.due : "no due date") + ")" }
             }
-            const c = items.find(x => x.id === rid(a.id)); if (!c) return { err: "no task with id " + a.id };
+            const c = st.items.find(x => x.id === rid(a.id)); if (!c) return { err: "no task with id " + a.id };
             if (a.type === "set_field") {
                 const f = a.field; let v = String(a.value == null ? "" : a.value).trim();
                 if (!FN[f]) return { err: "field must be owner, due, team or title" };
                 if (f === "due" && !okDate(v)) return { err: "due must be a real date as YYYY-MM-DD" };
-                if (f === "team") { v = TEAMS.find(t => t.toLowerCase() === v.toLowerCase()); if (!v) return { err: "team must be one of " + TEAMS.join(", ") } }
+                if (f === "team") { const t = teamOf(v); if (!t) return noTeam(v); v = t }
                 if (!v) return { err: "value is empty" }; if (c[f] === v) return { ok: "no change needed" };
                 const old = c[f]; c[f] = v; if (!created.includes(c.id)) c.log.push({ d, t: FN[f] + " changed from " + (old || "not set") + " to " + v, k: "change", ...tag });
                 return { ok: "updated", text: c.title + ": " + FN[f].toLowerCase() + " set to " + v }
             }
             if (a.type === "add_update") {
                 const note = String(a.note || "").trim(); if (!note) return { err: "note is empty" };
+                if (c.log.some(e => !e.k && e.t.trim().toLowerCase() === note.toLowerCase())) return { ok: "already logged" };
                 const when = okDate(a.date, true) ? a.date : d; c.log.push({ d: when, t: note, ...tag }); c.log.sort((x, y) => x.d < y.d ? -1 : x.d > y.d ? 1 : 0);
                 return { ok: "logged", text: c.title + ": logged “" + note + "”" + (when !== d ? " (dated " + when + ")" : "") }
             }
@@ -561,68 +568,108 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             return { err: "unknown action type " + a.type }
         }
         const sleep = ms => new Promise(r => setTimeout(r, ms));
-        async function aiRetry(sys, prompt, onWait) {
+        async function aiRetry(sys, prompt, onWait, json) {
             for (let n = 0; ; n++) {
-                try { return await ai(sys, prompt) } catch (e) {
+                try { return await ai(sys, prompt, json) } catch (e) {
                     const m = String(e && e.message || ""); if (n >= 4 || !/429|rate limit/i.test(m)) throw e;
                     const t = /try again in (?:(\d+)m)?([\d.]+)(ms|s)/i.exec(m), w = t ? Math.ceil(((+t[1] || 0) * 60 + parseFloat(t[2]) / (t[3] === "ms" ? 1000 : 1)) * 1000) + 500 : 10000 * (n + 1);
                     onWait(w); await sleep(w)
                 }
             }
         }
-        const IMP_SYS = () => `You are an operations agent that imports goals into the team commitment tracker for LightWork AI, a 20-30 person startup.
-Work through the source text ONE GOAL AT A TIME. For each goal, create it (or use the existing task if the board already has it), then apply EVERY fact the text states about it: owner, due date, team, progress updates (with their date if one is given), risks or blockers, completion. Use only facts from the text or the user's answers. Never invent or guess. If something important is missing or ambiguous (especially the due date, owner or team), don't guess: add an "ask" action with one short, specific question.
-Reply with ONLY a JSON object: {"note":"<a few words on what you are doing>","actions":[...],"finished":true|false}
-Action types:
-{"type":"create_task","ref":"<temporary name such as g1>","team":"Engineering|Product|Commercial|Operations","title":"<short title>","owner":"<name or empty>","due":"<YYYY-MM-DD or empty>"}
+        // Asks for JSON. If the reply isn't valid JSON, tells the AI what went wrong and asks again (up to twice).
+        async function askJSON(sys, prompt, show) {
+            let fix = "";
+            for (let n = 0; ; n++) {
+                try { return pj(await aiRetry(sys, prompt + fix, w => show("Waiting " + Math.round(w / 1000) + "s for the AI rate limit..."), true)) } catch (e) {
+                    const m = String(e && e.message || "AI error");
+                    if (n < 2 && (e instanceof SyntaxError || /json|failed to generate|unexpected token|expected/i.test(m))) { show("The AI's reply was garbled. Asking it to try again..."); fix = "\n\nYOUR PREVIOUS REPLY WAS NOT VALID JSON (" + m.slice(0, 160) + "). Reply again with ONLY valid JSON. Escape any double quotes inside strings, and keep it short: at most 10 actions."; continue }
+                    throw e
+                }
+            }
+        }
+        const ACTIONS = () => `Action types:
+{"type":"create_task","ref":"<temporary name such as g1>","team":"<one of the teams>","title":"<short title>","owner":"<name or empty>","due":"<YYYY-MM-DD or empty>"}
 {"type":"set_field","id":"<task id or ref>","field":"owner|due|team|title","value":"<new value>"}
-{"type":"add_update","id":"<task id or ref>","note":"<progress update in a short sentence>","date":"<YYYY-MM-DD if the text gives one, else empty>"}
+{"type":"add_update","id":"<task id or ref>","note":"<progress update in one short sentence>","date":"<YYYY-MM-DD if the text gives one, else empty>"}
 {"type":"set_risk","id":"<task id or ref>","at_risk":true|false}
 {"type":"mark_done","id":"<task id or ref>","done_on":"<YYYY-MM-DD if given, else empty>"}
-{"type":"ask","id":"<task id or ref, or empty>","question":"<one short question for the user>"}
-Rules:
-- Today is ${realToday()}. Resolve relative dates such as "end of month" or "next Friday" to YYYY-MM-DD. A date without a year means its next occurrence.
-- Status (on track, at risk, missed) is calculated automatically from these fields. Set risk only when the text describes a delay, blocker or concern. Mark done only when the work is clearly complete.
-- A ref you create can be used as the id in later actions, in the same reply or later ones.
-- You will see the result of every action. If one failed, fix it next turn.
-- Set "finished": true only when every goal in the text has been fully handled.`;
+{"type":"add_team","name":"<team name>"}  (only if the text clearly names a team that isn't in the list)
+{"type":"rename_team","from":"<existing team>","to":"<new name>"}  (only if the text says a team has been renamed)
+{"type":"ask","id":"<task id or ref, or empty>","question":"<one short question for the user>"}`;
+        const RULES = () => `Today is ${realToday()}. Resolve relative dates such as "end of month", "next Friday" or "Q4" to YYYY-MM-DD. A date without a year means its next occurrence.
+Status (on track, at risk, missed) is calculated automatically from these fields. Set risk only when the text describes a delay, blocker or concern. Mark done only when the work is clearly complete.
+Teams: ${teams().join(", ")}. Map synonyms to the closest existing team (for example "eng" or "dev" to Engineering, "CS" to Customer Success, "commercial" or "BD" to Sales) before considering add_team.`;
+        const PLAN_SYS = () => `You read messy text (lists, notes, emails, tables) and find every goal or commitment in it. Facts about one goal are often spread across the text: an owner list, a dates table, a later paragraph, a "who's doing what" section. For each goal, gather EVERY fact from ANYWHERE in the text.
+Reply with ONLY a JSON object: {"goals":[{"goal":"<short title>","team":"<team or empty>","owner":"<name or empty>","due":"<YYYY-MM-DD or empty>","updates":[{"date":"<YYYY-MM-DD or empty>","note":"<progress, blocker or status>"}],"at_risk":true|false,"done":true|false,"done_on":"<YYYY-MM-DD or empty>","missing":"<which of team, owner, due are genuinely stated nowhere in the text, or empty>"}]}
+${RULES()}`;
+        const IMP_SYS = () => `You are an operations agent that imports goals into the team commitment tracker for LightWork AI, a 20-30 person startup.
+You are given the source text and a PLAN listing each goal with the facts already gathered from the whole text. Work through the plan ONE GOAL PER STEP, in order. For each goal: create the task (or use the existing task if the board already has it), then apply every fact: owner, due date, team, each progress update (with its date), risk, completion.
+Use only facts from the source text, the plan or the user's answers. Never invent. Before asking a question, re-read the WHOLE source text: only ask about something important (due date, owner, team) that is genuinely stated nowhere.
+Reply with ONLY a JSON object: {"note":"<a few words on what you are doing>","actions":[...],"finished":true|false}. At most 12 actions per reply.
+${ACTIONS()}
+${RULES()}
+A ref you create can be used as the id in later actions, in the same reply or later ones. You will see the result of every action; if one failed, fix it next step. Set "finished": true only when every goal in the plan has been fully handled.`;
+        const REVIEW_SYS = () => `You check an import agent's questions before they are shown to a busy founder. For each question, search the WHOLE source text. If the text already answers it (even indirectly, or in a different section), return the actions that apply that answer and drop the question. Keep only questions the text genuinely cannot answer.
+Reply with ONLY a JSON object: {"actions":[...],"keep":[<numbers of the questions to keep>]}
+${ACTIONS().replace(/\n\{"type":"ask"[^\n]*/, "")}
+${RULES()}`;
         const brief = items => JSON.stringify(items.map(c => { const lu = lastUp(c); return { id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due || "", at_risk: c.risk, done: c.done, last_update: lu ? lu.d + ": " + lu.t : "" } }));
         let IMP = null;
-        async function runAgent(src, answers, show) {
-            const work = JSON.parse(JSON.stringify(S.items)), refs = {}, created = [], hist = [], acts = [], qs = [], log = [];
-            const lines = src.split(/\n+/).filter(l => l.trim()).length, max = Math.min(40, (answers ? answers.length : lines) * 2 + 4); let stop = "";
+        async function runAgent(src, answers, showLog) {
+            const st = { items: JSON.parse(JSON.stringify(S.items)), teams: teams() }, refs = {}, created = [], hist = [], acts = [], qs = [], log = [];
+            const show = h => showLog(log, h); let stop = "", plan = null;
+            const run = list => list.forEach(a => {
+                if (!a || typeof a !== "object") return;
+                if (a.type === "ask") { const q = String(a.question || "").trim(), id = refs[a.id] || a.id || ""; if (q && qs.length < 15 && !qs.some(x => x.q === q)) qs.push({ q, id }); hist.push("ask: " + q + " -> queued"); return }
+                const res = execA(st, a, refs, created), A = JSON.stringify(a, (k, v) => k === "__id" ? undefined : v);
+                hist.push(A + " -> " + (res.err ? "ERROR: " + res.err : res.ok)); if (res.err) log.push({ e: 1, t: "Fixing: " + res.err }); else { acts.push(a); if (res.text) log.push({ t: res.text }) }
+            });
+            // 1. Plan: gather the facts for every goal from the whole text.
+            if (!answers) {
+                show("Reading the text and listing the goals...");
+                try { const r = await askJSON(PLAN_SYS(), "SOURCE TEXT:\n" + src + "\n\nTASKS ALREADY ON THE BOARD:\n" + brief(st.items), show); if (Array.isArray(r && r.goals) && r.goals.length) { plan = r.goals.slice(0, 30); log.push({ t: "Found " + plan.length + " goal" + (plan.length === 1 ? "" : "s") + " in the text" }) } }
+                catch (e) { if (/wrong password|401/i.test(e.message || "")) return { acts, qs, log, stop: e.message } }
+            }
+            // 2. Act: one goal per step, with feedback on every action.
+            const n = answers ? answers.length : plan ? plan.length : src.split(/\n+/).filter(l => l.trim()).length, max = Math.min(40, n * 2 + 4);
             for (let step = 1; step <= max; step++) {
-                show(log, "Working (step " + step + ")...");
-                const prompt = "SOURCE TEXT:\n" + src + (answers ? "\n\nTHE USER HAS ANSWERED YOUR QUESTIONS. Apply these answers to the tasks on the board. Ask again only if an answer is itself unclear.\n" + answers.map(x => "Q: " + x.q + (x.id ? " (task " + x.id + ")" : "") + "\nA: " + x.a).join("\n") : "") +
-                    "\n\nBOARD NOW:\n" + brief(work) + "\n\nACTIONS SO FAR AND THEIR RESULTS:\n" + (hist.length ? hist.slice(-60).join("\n") : "(none yet)") + (qs.length ? "\n\nQUESTIONS ALREADY QUEUED:\n" + qs.map(x => "- " + x.q).join("\n") : "") + "\n\nStep " + step + " of at most " + max + ". Handle the next goal, or finish.";
-                let r; try { r = pj(await aiRetry(IMP_SYS(), prompt, w => show(log, "Waiting " + Math.round(w / 1000) + "s for the AI rate limit..."))) } catch (e) { stop = (e && e.message) || "AI error"; break }
-                const list = Array.isArray(r && r.actions) ? r.actions.slice(0, 25) : [];
-                list.forEach(a => {
-                    if (!a || typeof a !== "object") return;
-                    if (a.type === "ask") { const q = String(a.question || "").trim(), id = refs[a.id] || a.id || ""; if (q && qs.length < 15 && !qs.some(x => x.q === q)) qs.push({ q, id }); hist.push("ask: " + q + " -> queued"); return }
-                    const res = execA(work, a, refs, created), A = JSON.stringify(a, (k, v) => k === "__id" ? undefined : v);
-                    hist.push(A + " -> " + (res.err ? "ERROR: " + res.err : res.ok)); if (res.err) log.push({ e: 1, t: "Fixing: " + res.err }); else { acts.push(a); if (res.text) log.push({ t: res.text }) }
-                });
+                show(answers ? "Applying your answers (step " + step + ")..." : "Working on goal " + Math.min(step, plan ? plan.length : step) + (plan ? " of " + plan.length : "") + "...");
+                const prompt = "SOURCE TEXT:\n" + src + (plan ? "\n\nPLAN (facts gathered from the whole text):\n" + JSON.stringify(plan) : "") +
+                    (answers ? "\n\nTHE USER HAS ANSWERED YOUR QUESTIONS. Apply these answers to the tasks on the board. Ask again only if an answer is itself unclear.\n" + answers.map(x => "Q: " + x.q + (x.id ? " (task " + x.id + ")" : "") + "\nA: " + x.a).join("\n") : "") +
+                    "\n\nBOARD NOW:\n" + brief(st.items) + "\n\nACTIONS SO FAR AND THEIR RESULTS:\n" + (hist.length ? hist.slice(-60).join("\n") : "(none yet)") + (qs.length ? "\n\nQUESTIONS ALREADY QUEUED:\n" + qs.map(x => "- " + x.q).join("\n") : "") + "\n\nStep " + step + " of at most " + max + ". Handle the next goal, or finish.";
+                let r; try { r = await askJSON(IMP_SYS(), prompt, show) } catch (e) { stop = (e && e.message) || "AI error"; break }
+                const list = Array.isArray(r && r.actions) ? r.actions.slice(0, 25) : []; run(list);
                 if (r && r.finished === true) break; if (!list.length) break; if (step === max) stop = "reached the step limit";
+            }
+            // 3. Review: drop questions the text already answers, and apply those answers instead.
+            if (qs.length && !stop) {
+                show("Checking its questions against the text...");
+                try {
+                    const r = await askJSON(REVIEW_SYS(), "SOURCE TEXT:\n" + src + "\n\nBOARD NOW:\n" + brief(st.items) + "\n\nQUESTIONS:\n" + qs.map((x, k) => k + ". " + x.q + (x.id ? " (task " + x.id + ")" : "")).join("\n"), show);
+                    const before = qs.length; run((Array.isArray(r && r.actions) ? r.actions : []).filter(a => a && a.type !== "ask").slice(0, 30));
+                    if (Array.isArray(r && r.keep)) { const keep = qs.filter((x, k) => r.keep.map(Number).includes(k)); qs.length = 0; keep.forEach(x => qs.push(x)) }
+                    if (before > qs.length) log.push({ t: "Answered " + (before - qs.length) + " of its own question" + (before - qs.length === 1 ? "" : "s") + " from the text" })
+                } catch (e) { }
             }
             return { acts, qs, log, stop }
         }
         // Applies the agent's actions to the latest saved data, so nobody else's changes are overwritten.
         async function commitActs(acts) {
             if (shared() && !saving && !again) { try { await load() } catch (e) { } }
-            const refs = {}, created = [], before = {};
-            acts.forEach(a => { if (a.type !== "create_task") { const id = refs[a.id] || a.id, c = S.items.find(x => x.id === id); if (c && !before[id] && !created.includes(id)) before[id] = JSON.parse(JSON.stringify(c)) } execA(S.items, a, refs, created) });
-            if (acts.length) { save(); render() } return { before, created, refs }
+            const refs = {}, created = [], before = {}, teamsBefore = Array.isArray(S.teams) ? S.teams.slice() : null, st = { items: S.items, teams: teams() };
+            acts.forEach(a => { if (a.id) { const id = refs[a.id] || a.id, c = S.items.find(x => x.id === id); if (c && !before[id] && !created.includes(id)) before[id] = JSON.parse(JSON.stringify(c)) } if (a.type === "rename_team") S.items.forEach(c => { if (c.team === a.from && !before[c.id]) before[c.id] = JSON.parse(JSON.stringify(c)) }); execA(st, a, refs, created) });
+            S.teams = st.teams; if (acts.length) { save(); render() } return { before, created, refs, teamsBefore }
         }
         function showProg(log, head) { $("#iout").innerHTML = `<div class="card"><b>${esc(head)}</b><ul class="ilog">${log.map(l => `<li${l.e ? ' class="e"' : ""}>${esc(l.t)}</li>`).join("")}</ul></div>` }
         async function agentImport(src, answers, round) {
             $("#ibtn").disabled = true; $("#ist").textContent = "";
-            const res = await runAgent(src, answers, showProg);
+            const res = await runAgent(src, answers, showProg); if (/wrong password/i.test(res.stop)) { $("#ibtn").disabled = false; return }
             if (!answers && !res.acts.length && res.stop) { $("#ibtn").disabled = false; return fallbackImport(src, new Error(res.stop)) }
             const u = await commitActs(res.acts); $("#ibtn").disabled = false;
             const qs = (round || 1) >= 3 ? [] : res.qs.map(x => ({ ...x, id: u.refs[x.id] || x.id }));
             const nNew = u.created.length, nUpd = Object.keys(u.before).length, done = res.log.filter(l => !l.e);
-            IMP = { src, before: u.before, created: u.created, qs, round: round || 1 };
+            IMP = { src, before: u.before, created: u.created, teamsBefore: u.teamsBefore, qs, round: round || 1 };
             $("#ist").textContent = res.stop ? "The agent stopped early (" + res.stop + "). Everything it did up to then is saved." : "";
             const tl = id => { const c = S.items.find(x => x.id === id); return c ? `<a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a>` : "" };
             $("#iout").innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><b>${answers ? "Answers applied" : "Import complete"}: ${nNew} created, ${nUpd} existing updated</b>${nNew || nUpd ? '<span id="iundo"><button>Undo</button></span>' : ""}</div>
@@ -630,7 +677,7 @@ ${done.length ? `<details${done.length <= 12 ? " open" : ""}><summary class="mut
                 (qs.length ? `<div class="card" id="iqs"><b>The agent has ${qs.length} question${qs.length > 1 ? "s" : ""}</b><p class="mut" style="margin:2px 0 4px">Your tasks are already saved. Answer what you can and the agent will update them. Leave any blank to keep things as they are.</p>` +
                     qs.map((x, k) => `<div class="qa">${x.id ? tl(x.id) + "<br>" : ""}<label for="qa${k}">${esc(x.q)}</label><input id="qa${k}" autocomplete="off"></div>`).join("") +
                     `<div class="row" style="margin-top:8px"><button class="p" id="iansw">Apply answers</button><button id="iskip">Keep as is</button></div></div>` : "");
-            if ($("#iundo")) $("#iundo button").onclick = () => { if (!IMP) return; const { before, created } = IMP; S.items = S.items.filter(c => !created.includes(c.id)).map(c => before[c.id] || c); IMP = null; save(); render(); $("#iundo").innerHTML = '<span class="mut">Undone</span>'; if ($("#iqs")) $("#iqs").remove() };
+            if ($("#iundo")) $("#iundo button").onclick = () => { if (!IMP) return; const { before, created, teamsBefore } = IMP; S.items = S.items.filter(c => !created.includes(c.id)).map(c => before[c.id] || c); S.teams = teamsBefore || undefined; IMP = null; save(); render(); $("#iundo").innerHTML = '<span class="mut">Undone</span>'; if ($("#iqs")) $("#iqs").remove() };
             if (qs.length) {
                 $("#iskip").onclick = () => { $("#iqs").innerHTML = '<p class="mut" style="margin:0">Questions skipped. Tasks are saved with the information provided.</p>' };
                 $("#iansw").onclick = () => { const ans = qs.map((x, k) => ({ ...x, a: $("#qa" + k).value.trim() })).filter(x => x.a); if (!ans.length) return $("#iskip").click(); agentImport(src, ans, (round || 1) + 1) };
@@ -638,14 +685,26 @@ ${done.length ? `<details${done.length <= 12 ? " open" : ""}><summary class="mut
         }
         $("#ibtn").onclick = () => { const txt = $("#itext").value.trim(); if (!txt) return; if (!aiOn()) return fallbackImport(txt); $("#itext").value = ""; agentImport(txt) };
         function fallbackImport(txt, err) {
-            const R = txt.split(/\n+|;/).filter(x => x.trim()).map(l => { const m = l.match(/^\s*([A-Za-z]+)\s*[:\-]\s*(.+?)(?:\s+(?:by|before|due)\s+(.+))?$/i); return m ? { team: tm(m[1]), title: m[2], owner: "", due: pd(m[3] || "") } : { team: TEAMS[0], title: l.trim(), owner: "", due: "" } });
+            const R = txt.split(/\n+|;/).filter(x => x.trim()).map(l => { const m = l.match(/^\s*([A-Za-z]+)\s*[:\-]\s*(.+?)(?:\s+(?:by|before|due)\s+(.+))?$/i); return m ? { team: tm(m[1]), title: m[2], owner: "", due: pd(m[3] || "") } : { team: teams()[0], title: l.trim(), owner: "", due: "" } });
             $("#ist").textContent = why(err);
-            $("#iout").innerHTML = "<table>" + R.map((r, k) => `<tr><td><input type="checkbox" id="ik${k}" checked></td><td><select id="it${k}">${TEAMS.map(t => `<option${t === r.team ? " selected" : ""}>${t}</option>`).join("")}</select></td><td><input id="ii${k}" value="${esc(r.title)}" style="width:100%"></td><td><input id="io${k}" value="${esc(r.owner)}" placeholder="Owner" size="9"></td><td><input type="date" id="id${k}" value="${esc(r.due)}"></td></tr>`).join("") + '</table><button class="p" id="iadd">Add to board</button>';
+            $("#iout").innerHTML = "<table>" + R.map((r, k) => `<tr><td><input type="checkbox" id="ik${k}" checked></td><td><select id="it${k}">${teams().map(t => `<option${t === r.team ? " selected" : ""}>${t}</option>`).join("")}</select></td><td><input id="ii${k}" value="${esc(r.title)}" style="width:100%"></td><td><input id="io${k}" value="${esc(r.owner)}" placeholder="Owner" size="9"></td><td><input type="date" id="id${k}" value="${esc(r.due)}"></td></tr>`).join("") + '</table><button class="p" id="iadd">Add to board</button>';
             $("#iadd").onclick = () => {
                 const rows = R.map((r, k) => ({ k, on: $("#ik" + k).checked, due: $("#id" + k).value })).filter(x => x.on);
                 rows.forEach(x => S.items.push({ id: newId(), team: $("#it" + x.k).value, title: $("#ii" + x.k).value, owner: $("#io" + x.k).value || "Unassigned", due: x.due, created: realToday(), log: [], risk: false, done: false, doneOn: null })); save(); render(); $("#iout").innerHTML = '<p class="mut">' + rows.length + " commitment(s) added. See the Board tab.</p>"; $("#itext").value = ""
             }
         }
+
+        function rTeams() {
+            const ts = teams(), n = t => S.items.filter(c => c.team === t).length;
+            $("#tlist").innerHTML = '<table class="kv">' + ts.map((t, k) => `<tr><td style="width:auto"><input id="tn${k}" value="${esc(t)}" maxlength="40" aria-label="Team name"></td><td class="mut" style="white-space:nowrap">${n(t)} task${n(t) === 1 ? "" : "s"}</td><td style="text-align:right;white-space:nowrap"><button data-r="${k}">Rename</button> <button data-d="${k}"${n(t) ? ' disabled title="Move or delete its tasks first"' : ""}>Remove</button></td></tr>`).join("") + "</table>";
+            $("#tlist").onclick = e => {
+                const r = e.target.dataset.r, d = e.target.dataset.d; $("#terr").textContent = "";
+                if (r != null) { const old = ts[+r], nu = $("#tn" + r).value.trim(); if (!nu || nu === old) return; if (ts.some(t => t.toLowerCase() === nu.toLowerCase() && t !== old)) { $("#terr").textContent = "That team already exists."; return } S.teams = ts.map(t => t === old ? nu : t); S.items.forEach(c => { if (c.team === old) { c.team = nu; c.log.push({ d: realToday(), t: "Team renamed from " + old + " to " + nu, k: "change" }) } }); save(); render(); rTeams() }
+                if (d != null) { S.teams = ts.filter(t => t !== ts[+d]); save(); render(); rTeams() }
+            };
+        }
+        $("#tadd").onclick = () => { const nu = $("#tnew").value.trim(), ts = teams(); $("#terr").textContent = ""; if (!nu) return; if (ts.some(t => t.toLowerCase() === nu.toLowerCase())) { $("#terr").textContent = "That team already exists."; return } S.teams = ts.concat(nu); $("#tnew").value = ""; save(); render(); rTeams() };
+        $("#tnew").onkeydown = e => { if (e.key === "Enter") $("#tadd").click() };
         function tmpl() {
             const T = realToday(), I = info, o = open(), miss = o.filter(c => I(c).st === "missed"), risk = o.filter(c => I(c).st === "at-risk"), stale = o.filter(c => I(c).needs && !miss.includes(c) && !risk.includes(c)), dn = S.items.filter(c => c.done && c.doneOn && diff(T, c.doneOn) <= 7);
             const L = (h, a, f) => a.length ? "\n" + h + "\n" + a.map(f).join("\n") + "\n" : "", b = c => "- " + c.team + ": " + c.title + " (" + c.owner + ", " + (c.due ? "due " + c.due : "no due date") + ")";
@@ -657,9 +716,9 @@ ${done.length ? `<details${done.length <= 12 ? " open" : ""}><summary class="mut
             try { t = await ai("You are a chief of staff writing a weekly summary for startup founders. Use ONLY the facts given, add nothing. Plain text, no markdown tables. Lead with the biggest risks, then wins, then who to chase.", base); $("#sst").textContent = "Written with AI. Edit as needed." } catch (e) { $("#sst").textContent = aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the built-in template." : "AI not connected. Used the built-in template." }
             $("#sout").value = t
         }; $("#scopy").onclick = () => copy($("#sout").value);
-        $("#tabs").innerHTML = ["Board", "Log an update", "Import goals", "Weekly summary"].map((n, i) => `<button data-t="${i}">${n}</button>`).join("");
-        $("#tabs").onclick = e => { const i = e.target.dataset.t; if (i == null) return; document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === i));[0, 1, 2, 3].forEach(k => $("#t" + k).classList.toggle("hide", k != i)) };
-        $("#blank").onclick = () => { if (confirm("Delete all commitments and their history? This can't be undone.")) { S = { items: [] }; save(); render() } };
+        $("#tabs").innerHTML = ["Board", "Log an update", "Import goals", "Weekly summary", "Teams"].map((n, i) => `<button data-t="${i}">${n}</button>`).join("");
+        $("#tabs").onclick = e => { const i = e.target.dataset.t; if (i == null) return; document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === i));[0, 1, 2, 3, 4].forEach(k => $("#t" + k).classList.toggle("hide", k != i)); if (i === "4") rTeams() };
+        $("#blank").onclick = () => { if (confirm("Delete all commitments and their history? This can't be undone.")) { S = { items: [], teams: S.teams }; save(); render() } };
         const NAMES = { id: "ID", team: "Team", title: "Title", owner: "Owner", due: "Due date", created: "Created on", risk: "Owner flagged a risk", done: "Done", doneOn: "Done on", log: "Update history" };
         const ORD = Object.keys(NAMES);
         const fmt = (k, v) => k === "log" ? (v.length === 1 ? "1 entry" : v.length + " entries") + " (listed below)" : typeof v === "boolean" ? (v ? "Yes" : "No") : v == null || v === "" ? '<span class="mut">Not set</span>' : esc(v);
@@ -679,7 +738,7 @@ ${done.length ? `<details${done.length <= 12 ? " open" : ""}><summary class="mut
 <div class="box"><b>Update history (${c.log.length})</b>${c.log.length ? `<table class="kv" style="margin-top:6px">${c.log.slice().reverse().map(e => `<tr><td>${esc(e.d)}</td><td>${e.k === "change" ? '<span class="tag">Change</span> ' : ""}${e.src === "ai" ? '<span class="tag">Applied by AI</span> ' : ""}${esc(e.t)}</td></tr>`).join("")}</table>` : '<p class="mut">No updates logged yet.</p>'}
 ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-height:70px" placeholder="Add a progress update, e.g. webhooks done, testing Thursday"></textarea><div class="row"><label><input type="checkbox" id="drisk"${c.risk ? " checked" : ""}> At risk</label><button class="p" id="dadd">Add update</button></div></div>`}</div>
 <div class="box"><b>Edit details</b><p class="mut">Edits are recorded in the history as changes. They don't count as a progress update, so they don't reset the "no update" clock.</p><div class="row">
-<input id="etitle" value="${esc(c.title)}" style="flex:1;min-width:220px" aria-label="Title"><select id="eteam" aria-label="Team">${TEAMS.map(t => `<option${t === c.team ? " selected" : ""}>${t}</option>`).join("")}</select><input id="eowner" value="${esc(c.owner)}" size="12" placeholder="Owner" aria-label="Owner"><input type="date" id="edue" value="${esc(c.due)}" aria-label="Due date"><button class="p" id="esave">Save changes</button></div></div>
+<input id="etitle" value="${esc(c.title)}" style="flex:1;min-width:220px" aria-label="Title"><select id="eteam" aria-label="Team">${teams().map(t => `<option${t === c.team ? " selected" : ""}>${t}</option>`).join("")}</select><input id="eowner" value="${esc(c.owner)}" size="12" placeholder="Owner" aria-label="Owner"><input type="date" id="edue" value="${esc(c.due)}" aria-label="Due date"><button class="p" id="esave">Save changes</button></div></div>
 <div class="box"><div class="row">${c.done ? '<button id="dreopen">Reopen</button>' : '<button id="ddone">Mark done</button>'}<button id="dnudge">Draft nudge</button><button id="ddel">Delete</button></div><div id="dnout"></div></div>
 <details class="box"><summary><b>Raw saved record</b> <span class="mut">(exactly what's stored, for checking)</span></summary><pre>${esc(JSON.stringify(c, null, 2))}</pre></details>`;
             const ch = t => c.log.push({ d: realToday(), t, k: "change" }), fin = () => { save(); render() };
@@ -708,7 +767,7 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
             })
         }
         function localAnswer(q) {
-            const ql = q.toLowerCase(), own = [...new Set(S.items.map(c => c.owner))].find(o => o && ql.includes(o.toLowerCase())), team = TEAMS.find(t => ql.includes(t.toLowerCase()));
+            const ql = q.toLowerCase(), own = [...new Set(S.items.map(c => c.owner))].find(o => o && ql.includes(o.toLowerCase())), team = teams().find(t => ql.includes(t.toLowerCase()));
             let r = S.items.map(c => ({ c, i: info(c) })), h = "Commitments"; if (own) r = r.filter(x => x.c.owner === own); if (team) r = r.filter(x => x.c.team === team);
             const mi = /miss|overdue|late/.test(ql), rk = /risk/.test(ql); if (mi && rk) { r = r.filter(x => x.i.st === "missed" || x.i.st === "at-risk"); h = "Missed or at risk" } else if (mi) { r = r.filter(x => x.i.st === "missed"); h = "Missed" } else if (/risk/.test(ql)) { r = r.filter(x => x.i.st === "at-risk"); h = "At risk" }
             else if (/update|stale|chase|nudge|attention/.test(ql)) { r = r.filter(x => !x.c.done && (x.i.st !== "on-track" || x.i.needs)); h = "Needing attention" }
