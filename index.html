@@ -328,18 +328,22 @@
             flex: 1;
             min-width: 0
         }
+        #lock{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+        #lock.hide{display:none}#lock .box{width:100%;max-width:380px}#lock input{width:100%;margin:10px 0}
+        .err{color:var(--bad);font-size:13px}#banner{border-color:var(--warn)}#banner.bad{border-color:var(--bad)}
     </style>
 </head>
 
 <body>
+    <div id="lock" class="hide"><form class="box" id="lform"><h1>LightWork Ops Tracker</h1><p class="mut" style="margin-bottom:0">Enter the team password to continue.</p><input type="password" id="lpw" autocomplete="current-password" aria-label="Team password"><div class="row"><button class="p">Sign in</button><span class="err" id="lerr" aria-live="polite"></span></div></form></div>
     <header>
         <div>
             <h1>LightWork Ops Tracker</h1><span class="mut" id="ai"></span>
         </div>
-        <div class="row"><label class="mut">Today <input type="date" id="today"></label><button id="real">Use real
-                date</button><button id="blank">Clear all</button></div>
+        <div class="row"><span class="mut" id="sync" aria-live="polite"></span><button id="blank">Clear all</button><button id="out">Sign out</button></div>
     </header>
     <main>
+        <div id="banner" class="box hide" role="status"></div>
         <div id="home">
             <section class="box" id="attn"></section>
             <div class="tabs" id="tabs"></div>
@@ -387,11 +391,51 @@
         const LBL = { "on-track": "On track", "at-risk": "At risk", missed: "Missed", done: "Done" };
         const realToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10) };
         const D = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)), diff = (a, b) => Math.round((D(a) - D(b)) / 864e5), add = (s, n) => new Date(D(s) + n * 864e5).toISOString().slice(0, 10);
-        let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) return s } catch (e) { } return { today: realToday(), items: [] } })();
+        const PWK = "lw_pw";
+        let S = { items: [] }, VER = 0, PW = (() => { try { return localStorage.getItem(PWK) || "" } catch (e) { return "" } })(), saving = false, again = false;
         const lastUp = c => { const u = c.log.filter(e => e.k !== "change"); return u[u.length - 1] };
-        const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)) } catch (e) { } }, open = () => S.items.filter(c => !c.done);
+        const open = () => S.items.filter(c => !c.done);
+        const shared = () => WORKER_URL && !WORKER_URL.startsWith("PASTE");
+        function setSync(t, bad) { const e = $("#sync"); e.textContent = t; e.style.color = bad ? "var(--bad)" : "" }
+        function banner(html, bad) { const b = $("#banner"); if (!html) { b.classList.add("hide"); return } b.innerHTML = html + ' <button id="bx">Dismiss</button>'; b.classList.toggle("bad", !!bad); b.classList.remove("hide"); $("#bx").onclick = () => b.classList.add("hide") }
+        async function api(path, o = {}) {
+            const ac = new AbortController(), to = setTimeout(() => ac.abort(), o.timeout || 15000);
+            try { return await fetch(new URL(path, WORKER_URL), { method: o.method || "GET", body: o.body, headers: { "Content-Type": "application/json", "X-Team-Password": PW }, signal: ac.signal }) }
+            catch (e) { throw new Error(e.name === "AbortError" ? "timed out" : "can't reach the server") } finally { clearTimeout(to) }
+        }
+        function lock(msg) { PW = ""; try { localStorage.removeItem(PWK) } catch (e) { } $("#lerr").textContent = msg || ""; $("#lock").classList.remove("hide"); setTimeout(() => $("#lpw").focus(), 0) }
+        async function load() {
+            const r = await api("data"), d = await r.json().catch(() => ({}));
+            if (r.status === 401) { const e = new Error("wrong password"); e.auth = 1; throw e }
+            if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+            S = d.data && Array.isArray(d.data.items) ? d.data : { items: [] }; VER = d.version || 0
+        }
+        function save() { if (!shared()) { try { localStorage.setItem(KEY, JSON.stringify(S)) } catch (e) { } return } if (saving) { again = true; return } push() }
+        async function push() {
+            saving = true; again = false; setSync("Saving...");
+            try {
+                const r = await api("data", { method: "PUT", body: JSON.stringify({ version: VER, data: S }) }), d = await r.json().catch(() => ({}));
+                if (r.status === 401) { again = false; lock("Your password has changed or expired. Enter it again."); return }
+                if (r.status === 409) { again = false; S = d.data; VER = d.version; render(); setSync("Saved"); banner("Someone else saved a change at the same moment, so your last change wasn't saved. You're now seeing the latest version. Please make your change again."); return }
+                if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+                VER = d.version; setSync("Saved"); banner("")
+            } catch (e) { again = false; setSync("Not saved", true); banner("Your last change wasn't saved (" + esc(e.message) + '). <button class="p" onclick="save()">Try again</button>', true) }
+            finally { saving = false; if (again) push() }
+        }
+        async function refresh() {
+            if (!shared() || !PW || saving || again || !$("#lock").classList.contains("hide")) return;
+            const a = document.activeElement; if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.id !== "cin") return;
+            try { const v = VER, r = await api("data"); if (!r.ok) return; const d = await r.json(); if (d.version > v && VER === v && !saving) { S = d.data; VER = d.version; render() } } catch (e) { }
+        }
+        async function boot() {
+            if (!shared()) { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) S = s } catch (e) { } $("#out").classList.add("hide"); setSync("Saved in this browser only"); render(); return }
+            if (!PW) return lock("");
+            setSync("Loading...");
+            try { await load(); render(); setSync("Saved") }
+            catch (e) { if (e.auth) lock("Enter the team password to continue."); else { setSync("Couldn't load", true); banner("Couldn't load the shared data (" + esc(e.message) + '). <button class="p" onclick="location.reload()">Reload</button>', true) } }
+        }
         function info(c) {
-            const T = S.today, lu = lastUp(c), last = lu ? lu.d : c.created, since = diff(T, last), left = diff(c.due, T), why = []; let st = "on-track";
+            const T = realToday(), lu = lastUp(c), last = lu ? lu.d : c.created, since = diff(T, last), left = diff(c.due, T), why = []; let st = "on-track";
             if (c.done) st = "done"; else if (left < 0) { st = "missed"; why.push("overdue by " + -left + " days") } else {
                 if (c.risk) { st = "at-risk"; why.push("owner flagged a risk") }
                 if (left <= 7 && since >= 5) { st = "at-risk"; why.push("due in " + left + " days, no update for " + since + " days") }
@@ -414,14 +458,14 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
         }
         function rBoard() { $("#t0").innerHTML = (S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>') + '<div class="grid">' + TEAMS.map(t => `<div class="box"><b>${t}</b>${S.items.filter(c => c.team === t).map(card).join("") || '<p class="mut">No commitments yet. Use Import goals.</p>'}</div>`).join("") + "</div>" }
         function act(id, a) {
-            const c = S.items.find(x => x.id === id); if (a === "done") { c.done = true; c.doneOn = S.today; c.log.push({ d: S.today, t: "Marked done" }) }
-            else if (a === "note") { const t = prompt('Update for "' + c.title + '"'); if (!t) return; c.log.push({ d: S.today, t }); c.risk = confirm("Is it at risk?\nOK = at risk, Cancel = on track") }
+            const c = S.items.find(x => x.id === id); if (a === "done") { c.done = true; c.doneOn = realToday(); c.log.push({ d: realToday(), t: "Marked done" }) }
+            else if (a === "note") { const t = prompt('Update for "' + c.title + '"'); if (!t) return; c.log.push({ d: realToday(), t }); c.risk = confirm("Is it at risk?\nOK = at risk, Cancel = on track") }
             else if (!confirm("Delete this commitment?")) return; else S.items = S.items.filter(x => x !== c); save(); render()
         }
-        const aiOn = () => WORKER_URL && !WORKER_URL.startsWith("PASTE");
+        const aiOn = shared;
         async function ai(system, prompt) {
-            if (!aiOn()) throw 0; const ac = new AbortController(), to = setTimeout(() => ac.abort(), 30000);
-            try { const r = await fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ system, prompt }), signal: ac.signal }); const d = await r.json().catch(() => ({})); if (!r.ok || !d.text) throw new Error(d.error || "HTTP " + r.status); return d.text } finally { clearTimeout(to) }
+            if (!aiOn()) throw 0; const to = 0;
+            try { const r = await api("ai", { method: "POST", body: JSON.stringify({ system, prompt }), timeout: 30000 }); const d = await r.json().catch(() => ({})); if (r.status === 401) lock("Enter the team password to continue."); if (!r.ok || !d.text) throw new Error(d.error || "HTTP " + r.status); return d.text } finally { clearTimeout(to) }
         }
         const pj = t => JSON.parse(t.match(/[\[{][\s\S]*[\]}]/)[0]), words = s => s.toLowerCase().match(/[a-z0-9]{3,}/g) || [], why = e => aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the simple built-in method. Check each row." : "AI not connected. Used the simple built-in method. Check each row.";
         function guess(l) { const w = new Set(words(l)); let b = "", bs = 0; open().forEach(c => { const s = words(c.title + " " + c.owner + " " + c.team).filter(x => w.has(x)).length; if (s > bs) { bs = s; b = c.id } }); return b }
@@ -430,25 +474,25 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             try { P = pj(await ai('You match status updates to commitments. Reply with ONLY a JSON array, one object per update: {"id":"<commitment id or empty string>","note":"<short clean note>","risk":true|false,"done":true|false}. risk is true only if the update signals a delay, blocker or concern. done is true only if the work is complete.', "Commitments: " + JSON.stringify(open().map(c => ({ id: c.id, team: c.team, title: c.title, owner: c.owner }))) + "\n\nUpdates, one per line:\n" + txt)); $("#ust").textContent = "Matched with AI. Check before applying." }
             catch (e) { P = txt.split(/\n+/).filter(Boolean).map(l => ({ id: guess(l), note: l, risk: /delay|block|slip|risk|stuck|waiting|late/i.test(l), done: /\b(done|completed|shipped|signed|closed)\b/i.test(l) })); $("#ust").textContent = why(e) }
             const o = open(); $("#uout").innerHTML = P.map((p, k) => `<div class="card"><div class="row"><select id="ps${k}"><option value="">Pick a commitment</option>${o.map(c => `<option value="${c.id}"${c.id === p.id ? " selected" : ""}>${esc(c.team)}: ${esc(c.title)}</option>`).join("")}</select><input id="pn${k}" value="${esc(p.note)}" style="flex:1;min-width:200px"><label><input type="checkbox" id="pr${k}"${p.risk ? " checked" : ""}> At risk</label><label><input type="checkbox" id="pd${k}"${p.done ? " checked" : ""}> Done</label></div></div>`).join("") + '<button class="p" id="uapp">Apply updates</button>';
-            $("#uapp").onclick = () => { let n = 0; P.forEach((p, k) => { const c = S.items.find(x => x.id === $("#ps" + k).value); if (!c) return; c.log.push({ d: S.today, t: $("#pn" + k).value }); c.risk = $("#pr" + k).checked; if ($("#pd" + k).checked) { c.done = true; c.doneOn = S.today } n++ }); save(); render(); $("#uout").innerHTML = '<p class="mut">' + n + " update(s) applied.</p>"; $("#utext").value = "" }
+            $("#uapp").onclick = () => { let n = 0; P.forEach((p, k) => { const c = S.items.find(x => x.id === $("#ps" + k).value); if (!c) return; c.log.push({ d: realToday(), t: $("#pn" + k).value }); c.risk = $("#pr" + k).checked; if ($("#pd" + k).checked) { c.done = true; c.doneOn = realToday() } n++ }); save(); render(); $("#uout").innerHTML = '<p class="mut">' + n + " update(s) applied.</p>"; $("#utext").value = "" }
         };
         function pd(s) {
-            if (!s) return ""; if (/end of (the )?month/i.test(s)) { const d = new Date(D(S.today)); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) }
-            let t = Date.parse(s + " " + S.today.slice(0, 4) + " UTC"); if (isNaN(t)) t = Date.parse(s + " UTC"); return isNaN(t) ? "" : new Date(t).toISOString().slice(0, 10)
+            if (!s) return ""; if (/end of (the )?month/i.test(s)) { const d = new Date(D(realToday())); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) }
+            let t = Date.parse(s + " " + realToday().slice(0, 4) + " UTC"); if (isNaN(t)) t = Date.parse(s + " UTC"); return isNaN(t) ? "" : new Date(t).toISOString().slice(0, 10)
         }
         const tm = p => TEAMS.find(t => t.toLowerCase().slice(0, 2) === p.trim().toLowerCase().slice(0, 2)) || TEAMS[0];
         $("#ibtn").onclick = async () => {
             const txt = $("#itext").value.trim(); if (!txt) return; $("#ist").textContent = "Working..."; let R;
-            try { R = pj(await ai('You extract team commitments from messy text. Reply with ONLY a JSON array of {"team":"Engineering|Product|Commercial|Operations","title":"short title","owner":"name or empty string","due":"YYYY-MM-DD or empty string"}. Today is ' + S.today + '. Resolve phrases like "end of month" or "14 April" to the next matching date.', txt)); $("#ist").textContent = "Extracted with AI. Check before adding." }
+            try { R = pj(await ai('You extract team commitments from messy text. Reply with ONLY a JSON array of {"team":"Engineering|Product|Commercial|Operations","title":"short title","owner":"name or empty string","due":"YYYY-MM-DD or empty string"}. Today is ' + realToday() + '. Resolve phrases like "end of month" or "14 April" to the next matching date.', txt)); $("#ist").textContent = "Extracted with AI. Check before adding." }
             catch (e) { R = txt.split(/\n+|;/).filter(x => x.trim()).map(l => { const m = l.match(/^\s*([A-Za-z]+)\s*[:\-]\s*(.+?)(?:\s+(?:by|before|due)\s+(.+))?$/i); return m ? { team: tm(m[1]), title: m[2], owner: "", due: pd(m[3] || "") } : { team: TEAMS[0], title: l.trim(), owner: "", due: "" } }); $("#ist").textContent = why(e) }
             $("#iout").innerHTML = "<table>" + R.map((r, k) => `<tr><td><input type="checkbox" id="ik${k}" checked></td><td><select id="it${k}">${TEAMS.map(t => `<option${t === r.team ? " selected" : ""}>${t}</option>`).join("")}</select></td><td><input id="ii${k}" value="${esc(r.title)}" style="width:100%"></td><td><input id="io${k}" value="${esc(r.owner)}" placeholder="Owner" size="9"></td><td><input type="date" id="id${k}" value="${esc(r.due)}"></td></tr>`).join("") + '</table><button class="p" id="iadd">Add to board</button>';
             $("#iadd").onclick = () => {
                 const rows = R.map((r, k) => ({ k, on: $("#ik" + k).checked, due: $("#id" + k).value })).filter(x => x.on); if (rows.some(x => !x.due)) { alert("Add a due date to every ticked row."); return }
-                rows.forEach(x => S.items.push({ id: "c" + Date.now() + x.k, team: $("#it" + x.k).value, title: $("#ii" + x.k).value, owner: $("#io" + x.k).value || "Unassigned", due: x.due, created: S.today, log: [], risk: false, done: false, doneOn: null })); save(); render(); $("#iout").innerHTML = '<p class="mut">' + rows.length + " commitment(s) added. See the Board tab.</p>"; $("#itext").value = ""
+                rows.forEach(x => S.items.push({ id: "c" + Date.now() + x.k, team: $("#it" + x.k).value, title: $("#ii" + x.k).value, owner: $("#io" + x.k).value || "Unassigned", due: x.due, created: realToday(), log: [], risk: false, done: false, doneOn: null })); save(); render(); $("#iout").innerHTML = '<p class="mut">' + rows.length + " commitment(s) added. See the Board tab.</p>"; $("#itext").value = ""
             }
         };
         function tmpl() {
-            const T = S.today, I = info, o = open(), miss = o.filter(c => I(c).st === "missed"), risk = o.filter(c => I(c).st === "at-risk"), stale = o.filter(c => I(c).needs && !miss.includes(c) && !risk.includes(c)), dn = S.items.filter(c => c.done && c.doneOn && diff(T, c.doneOn) <= 7);
+            const T = realToday(), I = info, o = open(), miss = o.filter(c => I(c).st === "missed"), risk = o.filter(c => I(c).st === "at-risk"), stale = o.filter(c => I(c).needs && !miss.includes(c) && !risk.includes(c)), dn = S.items.filter(c => c.done && c.doneOn && diff(T, c.doneOn) <= 7);
             const L = (h, a, f) => a.length ? "\n" + h + "\n" + a.map(f).join("\n") + "\n" : "", b = c => "- " + c.team + ": " + c.title + " (" + c.owner + ", due " + c.due + ")";
             return "Weekly summary, week ending " + T + "\n\nOverall: " + S.items.length + " commitments. " + (o.length - miss.length - risk.length) + " on track, " + risk.length + " at risk, " + miss.length + " missed, " + S.items.filter(c => c.done).length + " done.\n" +
                 L("MISSED", miss, c => b(c) + ": " + I(c).why) + L("AT RISK", risk, c => b(c) + ": " + I(c).why) + L("NEEDS AN UPDATE", stale, c => b(c) + ": " + I(c).why) + L("COMPLETED THIS WEEK", dn, b)
@@ -460,8 +504,7 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
         }; $("#scopy").onclick = () => copy($("#sout").value);
         $("#tabs").innerHTML = ["Board", "Log an update", "Import goals", "Weekly summary"].map((n, i) => `<button data-t="${i}">${n}</button>`).join("");
         $("#tabs").onclick = e => { const i = e.target.dataset.t; if (i == null) return; document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === i));[0, 1, 2, 3].forEach(k => $("#t" + k).classList.toggle("hide", k != i)) };
-        $("#today").onchange = e => { if (e.target.value) { S.today = e.target.value; save(); render() } }; $("#real").onclick = () => { S.today = realToday(); save(); render() };
-        $("#blank").onclick = () => { if (confirm("Delete all commitments and their history? This can't be undone.")) { S = { today: realToday(), items: [] }; save(); render() } };
+        $("#blank").onclick = () => { if (confirm("Delete all commitments and their history? This can't be undone.")) { S = { items: [] }; save(); render() } };
         const NAMES = { id: "ID", team: "Team", title: "Title", owner: "Owner", due: "Due date", created: "Created on", risk: "Owner flagged a risk", done: "Done", doneOn: "Done on", log: "Update history" };
         const ORD = Object.keys(NAMES);
         const fmt = (k, v) => k === "log" ? (v.length === 1 ? "1 entry" : v.length + " entries") + " (listed below)" : typeof v === "boolean" ? (v ? "Yes" : "No") : v == null || v === "" ? '<span class="mut">Not set</span>' : esc(v);
@@ -472,7 +515,7 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             const i = info(c), lu = lastUp(c), flagged = !c.done && (i.st !== "on-track" || i.needs);
             el.innerHTML = back + `<div class="box"><div class="row"><span class="pill ${i.st}">${LBL[i.st]}</span>${i.needs && i.st === "on-track" ? '<span class="pill at-risk">Needs update</span>' : ""}<h2 style="margin:0;font-size:20px">${esc(c.title)}</h2></div>
 <div class="mut">${esc(c.team)} / ${esc(c.owner)} / due ${c.due} (${rel(i.left)})</div>${i.why && !c.done ? `<div class="flag">${esc(i.why)}</div>` : ""}</div>
-<div class="grid"><div class="box"><b>Status as of ${S.today}</b><p class="mut">Worked out by fixed rules from the stored data. Not saved itself.</p><table class="kv">
+<div class="grid"><div class="box"><b>Status as of ${realToday()}</b><p class="mut">Worked out by fixed rules from the stored data. Not saved itself.</p><table class="kv">
 <tr><td>Status</td><td>${LBL[i.st]}${i.needs && i.st === "on-track" ? " (needs update)" : ""}</td></tr><tr><td>Reason</td><td>${c.done ? "Marked done" : esc(i.why) || "No issues"}</td></tr>
 <tr><td>Due</td><td>${c.due}, ${rel(i.left)}</td></tr><tr><td>Last progress update</td><td>${lu ? lu.d + " (" + (i.since ? pl(i.since, "day") + " ago" : "today") + ")" : "None yet (" + pl(i.since, "day") + " since created)"}</td></tr>
 <tr><td>In Attention needed</td><td>${flagged ? "Yes" : "No"}</td></tr></table>
@@ -484,20 +527,20 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
 <input id="etitle" value="${esc(c.title)}" style="flex:1;min-width:220px" aria-label="Title"><select id="eteam" aria-label="Team">${TEAMS.map(t => `<option${t === c.team ? " selected" : ""}>${t}</option>`).join("")}</select><input id="eowner" value="${esc(c.owner)}" size="12" placeholder="Owner" aria-label="Owner"><input type="date" id="edue" value="${esc(c.due)}" aria-label="Due date"><button class="p" id="esave">Save changes</button></div></div>
 <div class="box"><div class="row">${c.done ? '<button id="dreopen">Reopen</button>' : '<button id="ddone">Mark done</button>'}<button id="dnudge">Draft nudge</button><button id="ddel">Delete</button></div><div id="dnout"></div></div>
 <details class="box"><summary><b>Raw saved record</b> <span class="mut">(exactly what's stored, for checking)</span></summary><pre>${esc(JSON.stringify(c, null, 2))}</pre></details>`;
-            const ch = t => c.log.push({ d: S.today, t, k: "change" }), fin = () => { save(); render() };
-            if ($("#dadd")) $("#dadd").onclick = () => { const t = $("#dnote").value.trim(); if (!t) { $("#dnote").focus(); return } c.log.push({ d: S.today, t }); c.risk = $("#drisk").checked; fin() };
+            const ch = t => c.log.push({ d: realToday(), t, k: "change" }), fin = () => { save(); render() };
+            if ($("#dadd")) $("#dadd").onclick = () => { const t = $("#dnote").value.trim(); if (!t) { $("#dnote").focus(); return } c.log.push({ d: realToday(), t }); c.risk = $("#drisk").checked; fin() };
             $("#esave").onclick = () => {
                 const v = { title: $("#etitle").value.trim(), team: $("#eteam").value, owner: $("#eowner").value.trim() || "Unassigned", due: $("#edue").value }, L = { title: "Title", team: "Team", owner: "Owner", due: "Due date" };
                 if (!v.title || !v.due) { alert("Title and due date can't be empty."); return } let n = 0; Object.keys(v).forEach(k => { if (v[k] !== c[k]) { ch(L[k] + " changed from " + c[k] + " to " + v[k]); c[k] = v[k]; n++ } }); if (n) fin()
             };
-            if ($("#ddone")) $("#ddone").onclick = () => { c.done = true; c.doneOn = S.today; c.log.push({ d: S.today, t: "Marked done" }); fin() };
+            if ($("#ddone")) $("#ddone").onclick = () => { c.done = true; c.doneOn = realToday(); c.log.push({ d: realToday(), t: "Marked done" }); fin() };
             if ($("#dreopen")) $("#dreopen").onclick = () => { c.done = false; c.doneOn = null; ch("Reopened"); fin() };
             $("#dnudge").onclick = () => { const t = c.done ? "This commitment is done, so no nudge is needed." : nudge(c, i); $("#dnout").innerHTML = '<textarea id="dntxt" style="margin-top:10px;min-height:80px"></textarea><button id="dncp">Copy</button>'; $("#dntxt").value = t; $("#dncp").onclick = () => copy(t) };
             $("#ddel").onclick = () => { if (confirm("Delete this commitment?")) { S.items = S.items.filter(x => x !== c); save(); location.hash = ""; render() } }
         }
         function route() { const m = location.hash.match(/^#task\/(.+)$/), on = !!m; $("#home").classList.toggle("hide", on); $("#detail").classList.toggle("hide", !on); if (on) rDetail(decodeURIComponent(m[1])) }
         window.onhashchange = () => { route(); window.scrollTo(0, 0) };
-        function render() { $("#today").value = S.today; $("#ai").textContent = aiOn() ? "AI configured (the error message shows if it fails)" : "AI not connected, built-in fallbacks active"; rAttn(); rBoard(); route() }
+        function render() { $("#ai").textContent = aiOn() ? "AI configured (the error message shows if it fails)" : "AI not connected, built-in fallbacks active"; rAttn(); rBoard(); route() }
         let CH = [];
         const viewing = () => { const m = location.hash.match(/^#task\/(.+)$/); return m ? S.items.find(c => c.id === decodeURIComponent(m[1])) : null };
         function snapshot() {
@@ -535,7 +578,7 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
             CH.push({ r: "u", t: q }); const a = { r: "a", wait: true }; CH.push(a); rChat(); $("#cin").value = ""; const v = viewing();
             try {
                 let t = await ai("You are the operations assistant for LightWork AI, a 20-30 person startup. You answer questions from the founders about team commitments and deadlines. Use ONLY the JSON data provided. Never invent tasks, people, dates or reasons. Status and reason are already calculated by fixed rules; repeat them, don't recalculate. If the data doesn't answer the question, say so plainly. Be brief: a sentence or two, or short lines starting with \"- \". Plain text only, no markdown, no bold. Write task titles exactly as they appear in the data. Refer to dates as given.",
-                    "Today is " + S.today + ".\nRules: Missed = past due and not done. At risk = owner flagged a risk, or due within 7 days with no update for 5+ days. Needs update = no update for 10+ days.\n" + (v ? 'The user is currently viewing the task "' + v.title + '" (id ' + v.id + '). "This task" means that one.\n' : "") + "Commitments JSON:\n" + JSON.stringify(snapshot()) + (hist ? "\n\nConversation so far:\n" + hist : "") + "\n\nQuestion: " + q);
+                    "Today is " + realToday() + ".\nRules: Missed = past due and not done. At risk = owner flagged a risk, or due within 7 days with no update for 5+ days. Needs update = no update for 10+ days.\n" + (v ? 'The user is currently viewing the task "' + v.title + '" (id ' + v.id + '). "This task" means that one.\n' : "") + "Commitments JSON:\n" + JSON.stringify(snapshot()) + (hist ? "\n\nConversation so far:\n" + hist : "") + "\n\nQuestion: " + q);
                 a.t = t.replace(/\*\*|__|^#+\s*/gm, "").trim()
             } catch (e) { a.t = localAnswer(q); a.note = aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Simple built-in answer." : "AI not connected. Simple built-in answer." }
             a.wait = false; rChat()
@@ -545,7 +588,14 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
         $("#cform").onsubmit = e => { e.preventDefault(); if (!CH.some(m => m.wait)) ask($("#cin").value) };
         document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#chat").classList.contains("hide")) chatOpen(false) });
         window.addEventListener("hashchange", () => { if (!$("#chat").classList.contains("hide") && !CH.length) rChat() });
-        render(); $("#tabs button").click();
+        $("#out").onclick = () => { if (confirm("Sign out on this device?")) { S = { items: [] }; VER = 0; render(); lock("") } };
+        $("#lform").onsubmit = async e => {
+            e.preventDefault(); PW = $("#lpw").value; if (!PW) return; $("#lerr").textContent = "Checking...";
+            try { await load(); try { localStorage.setItem(PWK, PW) } catch (x) { } $("#lock").classList.add("hide"); $("#lpw").value = ""; $("#lerr").textContent = ""; banner(""); render(); setSync("Saved") }
+            catch (err) { PW = ""; $("#lerr").textContent = err.auth ? "Wrong password." : "Couldn't connect (" + err.message + ")." }
+        };
+        setInterval(refresh, 60000); document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh() });
+        render(); $("#tabs button").click(); boot();
     </script>
 </body>
 

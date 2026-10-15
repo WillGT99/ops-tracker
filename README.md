@@ -1,6 +1,6 @@
 # LightWork Ops Tracker
 
-A prototype operations agent for tracking team commitments and deadlines at LightWork AI. It's built for non-technical users (founders and a Founder's Associate): no code, no config files, just open the page.
+A prototype operations agent for tracking team commitments and deadlines at LightWork AI. It's built for non-technical users (founders and a Founder's Associate): no code, no config files. Open the page and enter the team password.
 
 **Live:** https://willgt99.github.io/ops-tracker/
 
@@ -26,20 +26,25 @@ AI only does language work: matching updates, extracting goals and writing summa
 
 ## Trying it out
 
-The board starts empty. Click **Import goals** and paste a list of goals with deadlines, then log updates against them. Use the **Today** date picker in the header to move the date forward and watch statuses change. **Clear all** deletes every commitment.
+Sign in with the team password. Click **Import goals** and paste a list of goals with deadlines, then log updates against them. Everyone signed in sees the same board. **Clear all** deletes every commitment for everyone.
 
 ## How it's built
 
 | Part | Tool | Why |
 |---|---|---|
 | App | One `index.html` on GitHub Pages | Free hosting, nothing to install |
-| Data | Browser localStorage | No database or sign-in needed |
+| Data | Cloudflare D1 (free SQL database) | Shared across the team, same account as the Worker |
 | AI | Groq free tier (`openai/gpt-oss-120b`) | Fast and free |
-| Relay | Cloudflare Worker | Keeps the API key out of the public page |
+| Relay | Cloudflare Worker | Keeps the API key out of the public page, checks the team password, reads and writes the data |
 
 ## Limitations
 
-- Data is stored in each person's own browser, so it isn't shared between users or devices.
+- One shared password, not individual accounts, so there's no record of who changed what.
+- If two people save at the same moment, the second change is rejected and that person is asked to redo it. Other people's changes appear within a minute, or when you return to the tab.
 - The daily check is a button, not a scheduled job.
 - Chat history is cleared when the page reloads.
-- The repo is public, and data stays in the browser only, so don't enter anything confidential on a shared computer.
+- The password is remembered in the browser until you sign out, so sign out on shared computers.
+
+## Setup
+
+See [SETUP.md](SETUP.md) to deploy your own copy.
