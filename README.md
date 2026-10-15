@@ -8,8 +8,8 @@ A prototype operations agent for tracking team commitments and deadlines at Ligh
 
 - **Board:** commitments grouped by team (Engineering, Product, Commercial, Operations), each with a status: on track, at risk, missed or done.
 - **Attention needed:** flags approaching deadlines with no recent update. "Run daily check" drafts nudge messages to paste into Slack or email.
-- **Log an update:** paste plain-English updates. AI matches each one to a commitment, and you confirm before anything changes.
-- **Import goals:** paste a messy list of goals and deadlines. AI turns it into commitments you review before adding.
+- **Log an update:** paste plain-English updates. The AI logs the note, flags risk, marks work done, and moves due dates or owners. Clear updates are applied straight away, with an Undo button. Anything unclear (an ambiguous match, a date in the past, low AI confidence) waits for you to confirm. Updates applied by the AI are tagged in each task's history.
+- **Import goals:** paste goals in any format (a list, meeting notes, an email). An AI agent works through them one at a time. It creates each task, or updates an existing one, and applies everything the text says: owner, due date, team, dated progress updates, risks and completion. The app checks each action and reports errors back to the agent, which corrects itself. Everything is saved with an Undo button. Then the agent asks about anything it couldn't work out. Answer and it updates the tasks, or skip and the tasks keep the information they have.
 - **Weekly summary:** an AI-written summary across teams, which you can edit and copy.
 - **Task pages:** click any task for its full history, stored data, edits and nudges.
 - **Ask about tasks:** a chatbox that answers questions using only the tracker's data.
@@ -22,7 +22,7 @@ Status is set by fixed rules, not by AI:
 - **At risk:** the owner flagged a risk, or it's due within 7 days with no update for 5 or more days.
 - **Needs update:** open with no update for 10 or more days.
 
-AI only does language work: matching updates, extracting goals and writing summaries and answers. If the AI fails, built-in fallbacks take over, so the app never dead-ends.
+AI only does language work: reading updates, extracting goals and writing summaries and answers. Whether an AI-read update is applied without asking is also decided by fixed checks, not by the AI alone. If the AI fails, built-in fallbacks take over, so the app never dead-ends.
 
 ## Trying it out
 
@@ -43,6 +43,7 @@ Sign in with the team password. Click **Import goals** and paste a list of goals
 - If two people save at the same moment, the second change is rejected and that person is asked to redo it. Other people's changes appear within a minute, or when you return to the tab.
 - The daily check is a button, not a scheduled job.
 - Chat history is cleared when the page reloads.
+- The import agent makes one AI call per goal, so a long list can take a while on Groq's free tier, which limits requests per minute. The app waits and retries automatically.
 - The password is remembered in the browser until you sign out, so sign out on shared computers.
 
 ## Setup

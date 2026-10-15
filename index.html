@@ -331,6 +331,8 @@
         #lock{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
         #lock.hide{display:none}#lock .box{width:100%;max-width:380px}#lock input{width:100%;margin:10px 0}
         .err{color:var(--bad);font-size:13px}#banner{border-color:var(--warn)}#banner.bad{border-color:var(--bad)}
+        .ilog{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--mut)}.ilog li{margin:2px 0}.ilog li.e{color:var(--bad)}
+        .qa{border-top:1px solid var(--line);padding:8px 0}.qa input{width:100%;margin-top:4px}
     </style>
 </head>
 
@@ -349,19 +351,17 @@
             <div class="tabs" id="tabs"></div>
             <section id="t0"></section>
             <section id="t1" class="box hide">
-                <p class="mut">Paste one or more updates in plain English, one per line. Check the match, then apply.
-                </p>
+                <p class="mut">Paste one or more updates in plain English, one per line. Clear updates are applied straight away. Anything unclear is shown for you to confirm.</p>
                 <textarea id="utext" placeholder="Greenfield: legal sent redlines, signing likely Friday"></textarea>
-                <div class="row"><button class="p" id="ubtn">Match to commitments</button><span class="mut"
-                        id="ust"></span></div>
+                <div class="row"><button class="p" id="ubtn">Process updates</button><span class="mut"
+                        id="ust"></span><label class="mut" style="margin-left:auto"><input type="checkbox" id="uask"> Always ask me before applying</label></div>
                 <div id="uout"></div>
             </section>
             <section id="t2" class="box hide">
-                <p class="mut">Paste a messy list of goals with deadlines. Check the rows, then add them to the board.
-                </p>
+                <p class="mut">Paste goals in any format: a list, meeting notes, an email. The agent works through them one at a time, creates or updates each task with everything the text says (owner, due date, progress, risks, completion), then asks you about anything it couldn't work out.</p>
                 <textarea id="itext"
                     placeholder="Engineering: ship integration by 14 April&#10;Commercial: close pilot with Greenfield by end of month"></textarea>
-                <div class="row"><button class="p" id="ibtn">Extract commitments</button><span class="mut"
+                <div class="row"><button class="p" id="ibtn">Import with agent</button><span class="mut"
                         id="ist"></span></div>
                 <div id="iout"></div>
             </section>
@@ -435,14 +435,14 @@
             catch (e) { if (e.auth) lock("Enter the team password to continue."); else { setSync("Couldn't load", true); banner("Couldn't load the shared data (" + esc(e.message) + '). <button class="p" onclick="location.reload()">Reload</button>', true) } }
         }
         function info(c) {
-            const T = realToday(), lu = lastUp(c), last = lu ? lu.d : c.created, since = diff(T, last), left = diff(c.due, T), why = []; let st = "on-track";
-            if (c.done) st = "done"; else if (left < 0) { st = "missed"; why.push("overdue by " + -left + " days") } else {
+            const T = realToday(), lu = lastUp(c), last = lu ? lu.d : c.created, since = diff(T, last), left = c.due ? diff(c.due, T) : null, why = []; let st = "on-track";
+            if (c.done) st = "done"; else if (left !== null && left < 0) { st = "missed"; why.push("overdue by " + -left + " days") } else {
                 if (c.risk) { st = "at-risk"; why.push("owner flagged a risk") }
-                if (left <= 7 && since >= 5) { st = "at-risk"; why.push("due in " + left + " days, no update for " + since + " days") }
+                if (left !== null && left <= 7 && since >= 5) { st = "at-risk"; why.push("due in " + left + " days, no update for " + since + " days") }
             }
-            const needs = !c.done && st !== "missed" && ((left <= 7 && since >= 5) || since >= 10); if (needs && !why.length) why.push("no update for " + since + " days"); return { st, why: why.join("; "), since, left, needs }
+            const needs = !c.done && st !== "missed" && (left === null || (left <= 7 && since >= 5) || since >= 10); if (left === null && !c.done) why.push("no due date set"); if (needs && !why.length) why.push("no update for " + since + " days"); return { st, why: why.join("; "), since, left, needs }
         }
-        const nudge = (c, i) => `Hi ${c.owner}, "${c.title}" ${i.left < 0 ? "was due " + -i.left + " days ago" : "is due in " + i.left + " days"}${i.since >= 5 ? " and there's been no update for " + i.since + " days" : c.risk ? " and you've flagged a risk" : ""}. Where are we, and is anything blocking you?`;
+        const nudge = (c, i) => `Hi ${c.owner}, "${c.title}" ${i.left === null ? "doesn't have a due date yet" : i.left < 0 ? "was due " + -i.left + " days ago" : "is due in " + i.left + " days"}${i.since >= 5 ? " and there's been no update for " + i.since + " days" : c.risk ? " and you've flagged a risk" : ""}. Where are we, and is anything blocking you?`;
         const copy = t => { try { navigator.clipboard.writeText(t) } catch (e) { } };
         function rAttn() {
             const f = open().map(c => ({ c, i: info(c) })).filter(x => x.i.st !== "on-track" || x.i.needs).sort((a, b) => (b.i.st === "missed") - (a.i.st === "missed"));
@@ -451,10 +451,10 @@
             $("#nud").onclick = () => { const t = f.length ? f.map(x => nudge(x.c, x.i)).join("\n\n") : "No nudges needed today."; $("#nout").innerHTML = '<p class="mut">Draft nudges, ready to paste into Slack or email:</p><textarea id="ntxt"></textarea><button id="ncp">Copy</button>'; $("#ntxt").value = t; $("#ncp").onclick = () => copy(t) }
         }
         function card(c) {
-            const i = info(c), l = lastUp(c); return `<div class="card"><span class="pill ${i.st}">${LBL[i.st]}</span> <a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a><div class="mut">${esc(c.owner)}, due ${c.due} (${i.left < 0 ? -i.left + " days ago" : "in " + i.left + " days"})</div>
+            const i = info(c), l = lastUp(c); return `<div class="card"><span class="pill ${i.st}">${LBL[i.st]}</span> <a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a><div class="mut">${esc(c.owner)}, ${c.due ? `due ${c.due} (${i.left < 0 ? -i.left + " days ago" : "in " + i.left + " days"})` : "no due date"}</div>
 <div class="mut">${l ? "Last update " + i.since + " days ago: " + esc(l.t) : "No updates yet"}</div>${i.why && !c.done ? `<div class="flag">${esc(i.why)}</div>` : ""}
 <div class="row" style="margin-top:6px">${c.done ? "" : `<button onclick="act('${c.id}','done')">Mark done</button><button onclick="act('${c.id}','note')">Add note</button>`}<button onclick="act('${c.id}','del')">Delete</button></div>
-${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</summary>${c.log.slice().reverse().map(e => `<div class="mut">${e.d}: ${e.k === "change" ? "(change) " : ""}${esc(e.t)}</div>`).join("")}</details>` : ""}</div>`
+${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</summary>${c.log.slice().reverse().map(e => `<div class="mut">${e.d}: ${e.k === "change" ? "(change) " : ""}${e.src === "ai" ? "(AI) " : ""}${esc(e.t)}</div>`).join("")}</details>` : ""}</div>`
         }
         function rBoard() { $("#t0").innerHTML = (S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>') + '<div class="grid">' + TEAMS.map(t => `<div class="box"><b>${t}</b>${S.items.filter(c => c.team === t).map(card).join("") || '<p class="mut">No commitments yet. Use Import goals.</p>'}</div>`).join("") + "</div>" }
         function act(id, a) {
@@ -469,31 +469,186 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
         }
         const pj = t => JSON.parse(t.match(/[\[{][\s\S]*[\]}]/)[0]), words = s => s.toLowerCase().match(/[a-z0-9]{3,}/g) || [], why = e => aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Used the simple built-in method. Check each row." : "AI not connected. Used the simple built-in method. Check each row.";
         function guess(l) { const w = new Set(words(l)); let b = "", bs = 0; open().forEach(c => { const s = words(c.title + " " + c.owner + " " + c.team).filter(x => w.has(x)).length; if (s > bs) { bs = s; b = c.id } }); return b }
+        let UNDO = null;
+        const ASKK = "lw_confirm_all", ISO = /^\d{4}-\d{2}-\d{2}$/;
+        const confirmAll = () => { try { return localStorage.getItem(ASKK) === "1" } catch (e) { return false } };
+        $("#uask").checked = confirmAll(); $("#uask").onchange = e => { try { localStorage.setItem(ASKK, e.target.checked ? "1" : "0") } catch (x) { } };
+        // Fixed rules decide what is applied automatically. The AI's own confidence is only one of the checks.
+        function plan(p) {
+            const c = S.items.find(x => x.id === p.id && !x.done), q = [];
+            if (!c) q.push(p.id && S.items.some(x => x.id === p.id) ? "That commitment is already done." : "Couldn't tell which commitment this is about.");
+            if (p.confidence !== "high") q.push(p.question || "The AI wasn't sure about this one.");
+            if (p.new_due && (!ISO.test(p.new_due) || p.new_due < realToday())) q.push("The new due date (" + p.new_due + ") looks wrong.");
+            if (p.done && p.risk === "yes") q.push("It reads as both done and at risk.");
+            if (!p.note) q.push("There's no update text.");
+            return { c, ask: confirmAll() || q.length > 0, why: [...new Set(q)].join(" ") }
+        }
+        function applyOne(c, p, src) {
+            const d = realToday(), out = [], tag = src === "ai" ? { src } : {};
+            c.log.push({ d, t: p.note, ...tag }); out.push("logged “" + p.note + "”");
+            if (p.risk === "yes" && !c.risk) out.push("flagged at risk"); if (p.risk === "no" && c.risk) out.push("cleared the risk flag");
+            if (p.risk === "yes") c.risk = true; if (p.risk === "no") c.risk = false;
+            if (p.new_due && p.new_due !== c.due) { c.log.push({ d, t: "Due date changed from " + c.due + " to " + p.new_due, k: "change", ...tag }); out.push("moved the due date from " + c.due + " to " + p.new_due); c.due = p.new_due }
+            if (p.new_owner && p.new_owner !== c.owner) { c.log.push({ d, t: "Owner changed from " + c.owner + " to " + p.new_owner, k: "change", ...tag }); out.push("changed the owner to " + p.new_owner); c.owner = p.new_owner }
+            if (p.done) { c.done = true; c.doneOn = d; out.push("marked done") }
+            return out
+        }
+        const norm = p => ({ line: String(p.line || p.note || "").trim(), id: String(p.id || ""), note: String(p.note || p.line || "").trim(), risk: p.risk === true || p.risk === "yes" ? "yes" : p.risk === "no" ? "no" : "unchanged", done: p.done === true, new_due: String(p.new_due || "").trim(), new_owner: String(p.new_owner || "").trim(), confidence: p.confidence === "high" ? "high" : "low", question: String(p.question || "") });
         $("#ubtn").onclick = async () => {
-            const txt = $("#utext").value.trim(); if (!txt) return; $("#ust").textContent = "Working..."; let P;
-            try { P = pj(await ai('You match status updates to commitments. Reply with ONLY a JSON array, one object per update: {"id":"<commitment id or empty string>","note":"<short clean note>","risk":true|false,"done":true|false}. risk is true only if the update signals a delay, blocker or concern. done is true only if the work is complete.', "Commitments: " + JSON.stringify(open().map(c => ({ id: c.id, team: c.team, title: c.title, owner: c.owner }))) + "\n\nUpdates, one per line:\n" + txt)); $("#ust").textContent = "Matched with AI. Check before applying." }
-            catch (e) { P = txt.split(/\n+/).filter(Boolean).map(l => ({ id: guess(l), note: l, risk: /delay|block|slip|risk|stuck|waiting|late/i.test(l), done: /\b(done|completed|shipped|signed|closed)\b/i.test(l) })); $("#ust").textContent = why(e) }
-            const o = open(); $("#uout").innerHTML = P.map((p, k) => `<div class="card"><div class="row"><select id="ps${k}"><option value="">Pick a commitment</option>${o.map(c => `<option value="${c.id}"${c.id === p.id ? " selected" : ""}>${esc(c.team)}: ${esc(c.title)}</option>`).join("")}</select><input id="pn${k}" value="${esc(p.note)}" style="flex:1;min-width:200px"><label><input type="checkbox" id="pr${k}"${p.risk ? " checked" : ""}> At risk</label><label><input type="checkbox" id="pd${k}"${p.done ? " checked" : ""}> Done</label></div></div>`).join("") + '<button class="p" id="uapp">Apply updates</button>';
-            $("#uapp").onclick = () => { let n = 0; P.forEach((p, k) => { const c = S.items.find(x => x.id === $("#ps" + k).value); if (!c) return; c.log.push({ d: realToday(), t: $("#pn" + k).value }); c.risk = $("#pr" + k).checked; if ($("#pd" + k).checked) { c.done = true; c.doneOn = realToday() } n++ }); save(); render(); $("#uout").innerHTML = '<p class="mut">' + n + " update(s) applied.</p>"; $("#utext").value = "" }
+            const txt = $("#utext").value.trim(); if (!txt) return; $("#ust").textContent = "Working..."; $("#uout").innerHTML = ""; $("#ubtn").disabled = true; let P, viaAI = true;
+            try {
+                P = pj(await ai('You process plain-English status updates for a startup\'s commitment tracker. Reply with ONLY a JSON array, one object per update line, in order:\n{"line":"<the original line>","id":"<commitment id, or empty string if none clearly matches>","note":"<short clean note of the update>","risk":"yes"|"no"|"unchanged","done":true|false,"new_due":"<YYYY-MM-DD or empty string>","new_owner":"<name or empty string>","confidence":"high"|"low","question":"<if low, one short sentence saying what is unclear, else empty string>"}\nRules:\n- risk is "yes" only if the update signals a delay, blocker or concern; "no" only if it says the work is back on track; otherwise "unchanged".\n- done is true only if the work is clearly finished.\n- new_due only if the update explicitly gives a new deadline. Resolve relative dates such as "next Friday" from today\'s date.\n- new_owner only if the update explicitly hands the work to someone else.\n- confidence is "high" only if exactly one commitment clearly matches AND everything you filled in is stated plainly. If the line could fit more than one commitment, or is vague, or you had to guess, use "low".\n- Never invent facts. One line updates at most one commitment.',
+                    "Today is " + realToday() + ".\nOpen commitments: " + JSON.stringify(open().map(c => ({ id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due }))) + "\n\nUpdates, one per line:\n" + txt));
+                if (!Array.isArray(P)) throw new Error("unexpected reply")
+            } catch (e) { viaAI = false; P = txt.split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => ({ line: l, id: guess(l), note: l, risk: /delay|block|slip|risk|stuck|waiting|late/i.test(l) ? "yes" : "unchanged", done: /\b(done|completed|shipped|signed|closed)\b/i.test(l) })); $("#ust").textContent = why(e).replace(" Check each row.", " Please check each one.") }
+            const before = {}, done = [], ask = [];
+            P.map(norm).forEach(p => { const r = plan(p); if (viaAI && !r.ask) { before[r.c.id] = before[r.c.id] || JSON.parse(JSON.stringify(r.c)); done.push({ c: r.c, what: applyOne(r.c, p, "ai") }) } else ask.push({ p, why: viaAI ? (confirmAll() && !r.why ? "You asked to confirm every update." : r.why) : "" }) });
+            if (done.length) { save(); render() }
+            UNDO = done.length ? before : null; $("#ubtn").disabled = false; $("#utext").value = ""; rUpd(done, ask, viaAI)
         };
+        function rUpd(done, ask, viaAI) {
+            const o = open(); let h = "";
+            if (done.length) h += `<div class="card"><div class="row" style="justify-content:space-between"><b>Applied automatically (${done.length})</b><span id="uundo"><button>Undo</button></span></div>` + done.map(x => `<div style="margin-top:6px"><a class="t" href="#task/${encodeURIComponent(x.c.id)}">${esc(x.c.title)}</a><div class="mut">${esc(x.what.join("; "))}</div></div>`).join("") + "</div>";
+            if (ask.length) h += `<div class="card" id="uask-box"><b>Needs your confirmation (${ask.length})</b><p class="mut" style="margin:2px 0 0">Leave the commitment blank to skip a line.</p>` + ask.map((a, k) => { const p = a.p, c = S.items.find(x => x.id === p.id); return `<div class="card">${a.why ? `<div class="flag">${esc(a.why)}</div>` : ""}<div class="mut">“${esc(p.line)}”</div><div class="row" style="margin-top:6px"><select id="ps${k}" aria-label="Commitment"><option value="">Skip / pick a commitment</option>${o.map(x => `<option value="${x.id}"${x.id === p.id ? " selected" : ""}>${esc(x.team)}: ${esc(x.title)}</option>`).join("")}</select><input id="pn${k}" value="${esc(p.note)}" style="flex:1;min-width:200px" aria-label="Update"></div><div class="row" style="margin-top:6px"><label><input type="checkbox" id="pr${k}"${p.risk === "yes" || (p.risk === "unchanged" && c && c.risk) ? " checked" : ""}> At risk</label><label><input type="checkbox" id="pd${k}"${p.done ? " checked" : ""}> Done</label><label class="mut">New due date <input type="date" id="pdue${k}" value="${ISO.test(p.new_due) ? p.new_due : ""}"></label><input id="pow${k}" placeholder="New owner (optional)" value="${esc(p.new_owner)}" size="16" aria-label="New owner"></div></div>` }).join("") + '<button class="p" id="uapp" style="margin-top:8px">Apply confirmed</button></div>';
+            $("#uout").innerHTML = h || '<p class="mut">No updates found.</p>';
+            if (viaAI) $("#ust").textContent = (done.length ? done.length + " applied automatically" : "Nothing applied automatically") + (ask.length ? ", " + ask.length + " need your confirmation." : ".");
+            if (done.length) $("#uundo button").onclick = () => { if (!UNDO) return; S.items = S.items.map(c => UNDO[c.id] || c); UNDO = null; save(); render(); $("#uundo").innerHTML = '<span class="mut">Undone</span>' };
+            if (ask.length) $("#uapp").onclick = () => {
+                let n = 0; ask.forEach((a, k) => { const c = S.items.find(x => x.id === $("#ps" + k).value && !x.done); if (!c) return; applyOne(c, { note: $("#pn" + k).value.trim() || a.p.line, risk: $("#pr" + k).checked ? "yes" : "no", done: $("#pd" + k).checked, new_due: $("#pdue" + k).value, new_owner: $("#pow" + k).value.trim() }, "user"); n++ });
+                if (n) { save(); render() } $("#uask-box").innerHTML = '<p class="mut" style="margin:0">' + n + " confirmed update(s) applied.</p>"
+            }
+        }
         function pd(s) {
             if (!s) return ""; if (/end of (the )?month/i.test(s)) { const d = new Date(D(realToday())); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) }
             let t = Date.parse(s + " " + realToday().slice(0, 4) + " UTC"); if (isNaN(t)) t = Date.parse(s + " UTC"); return isNaN(t) ? "" : new Date(t).toISOString().slice(0, 10)
         }
         const tm = p => TEAMS.find(t => t.toLowerCase().slice(0, 2) === p.trim().toLowerCase().slice(0, 2)) || TEAMS[0];
-        $("#ibtn").onclick = async () => {
-            const txt = $("#itext").value.trim(); if (!txt) return; $("#ist").textContent = "Working..."; let R;
-            try { R = pj(await ai('You extract team commitments from messy text. Reply with ONLY a JSON array of {"team":"Engineering|Product|Commercial|Operations","title":"short title","owner":"name or empty string","due":"YYYY-MM-DD or empty string"}. Today is ' + realToday() + '. Resolve phrases like "end of month" or "14 April" to the next matching date.', txt)); $("#ist").textContent = "Extracted with AI. Check before adding." }
-            catch (e) { R = txt.split(/\n+|;/).filter(x => x.trim()).map(l => { const m = l.match(/^\s*([A-Za-z]+)\s*[:\-]\s*(.+?)(?:\s+(?:by|before|due)\s+(.+))?$/i); return m ? { team: tm(m[1]), title: m[2], owner: "", due: pd(m[3] || "") } : { team: TEAMS[0], title: l.trim(), owner: "", due: "" } }); $("#ist").textContent = why(e) }
+        // ---------- Import agent ----------
+        const newId = () => "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const okDate = (d, past) => ISO.test(d || "") && !isNaN(D(d)) && (!past || d <= realToday());
+        const FN = { owner: "Owner", due: "Due date", team: "Team", title: "Title" };
+        // Runs one agent action against a task list. All validation is fixed code, not AI.
+        function execA(items, a, refs, created) {
+            const d = realToday(), tag = { src: "ai" }, rid = id => refs[id] || id;
+            if (a.type === "create_task") {
+                const title = String(a.title || "").trim(); if (!title) return { err: "title is required" };
+                const dup = items.find(x => x.title.trim().toLowerCase() === title.toLowerCase());
+                if (dup) { if (a.ref) refs[a.ref] = dup.id; return { err: "a task with this title already exists (id " + dup.id + "); " + (a.ref ? "ref " + a.ref + " now points to it, " : "") + "update it instead" } }
+                const team = TEAMS.find(t => t.toLowerCase() === String(a.team || "").trim().toLowerCase());
+                if (!team) return { err: "team must be one of " + TEAMS.join(", ") };
+                if (a.due && !okDate(a.due)) return { err: "due must be a real date as YYYY-MM-DD, or empty" };
+                const c = { id: a.__id || (a.__id = newId()), team, title, owner: String(a.owner || "").trim() || "Unassigned", due: a.due || "", created: d, log: [], risk: false, done: false, doneOn: null };
+                items.push(c); created.push(c.id); if (a.ref) refs[a.ref] = c.id;
+                return { ok: "created " + c.id, text: "Created “" + title + "” (" + team + ", " + c.owner + ", " + (c.due ? "due " + c.due : "no due date") + ")" }
+            }
+            const c = items.find(x => x.id === rid(a.id)); if (!c) return { err: "no task with id " + a.id };
+            if (a.type === "set_field") {
+                const f = a.field; let v = String(a.value == null ? "" : a.value).trim();
+                if (!FN[f]) return { err: "field must be owner, due, team or title" };
+                if (f === "due" && !okDate(v)) return { err: "due must be a real date as YYYY-MM-DD" };
+                if (f === "team") { v = TEAMS.find(t => t.toLowerCase() === v.toLowerCase()); if (!v) return { err: "team must be one of " + TEAMS.join(", ") } }
+                if (!v) return { err: "value is empty" }; if (c[f] === v) return { ok: "no change needed" };
+                const old = c[f]; c[f] = v; if (!created.includes(c.id)) c.log.push({ d, t: FN[f] + " changed from " + (old || "not set") + " to " + v, k: "change", ...tag });
+                return { ok: "updated", text: c.title + ": " + FN[f].toLowerCase() + " set to " + v }
+            }
+            if (a.type === "add_update") {
+                const note = String(a.note || "").trim(); if (!note) return { err: "note is empty" };
+                const when = okDate(a.date, true) ? a.date : d; c.log.push({ d: when, t: note, ...tag }); c.log.sort((x, y) => x.d < y.d ? -1 : x.d > y.d ? 1 : 0);
+                return { ok: "logged", text: c.title + ": logged “" + note + "”" + (when !== d ? " (dated " + when + ")" : "") }
+            }
+            if (a.type === "set_risk") { if (c.done) return { err: "task is done" }; const r = a.at_risk === true; if (c.risk === r) return { ok: "no change needed" }; c.risk = r; return { ok: "updated", text: c.title + ": " + (r ? "flagged at risk" : "risk flag cleared") } }
+            if (a.type === "mark_done") { if (c.done) return { ok: "already done" }; const when = okDate(a.done_on, true) ? a.done_on : d; c.done = true; c.doneOn = when; c.risk = false; c.log.push({ d: when, t: "Marked done", ...tag }); return { ok: "done", text: c.title + ": marked done" + (when !== d ? " on " + when : "") } }
+            return { err: "unknown action type " + a.type }
+        }
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        async function aiRetry(sys, prompt, onWait) {
+            for (let n = 0; ; n++) {
+                try { return await ai(sys, prompt) } catch (e) {
+                    const m = String(e && e.message || ""); if (n >= 4 || !/429|rate limit/i.test(m)) throw e;
+                    const t = /try again in (?:(\d+)m)?([\d.]+)(ms|s)/i.exec(m), w = t ? Math.ceil(((+t[1] || 0) * 60 + parseFloat(t[2]) / (t[3] === "ms" ? 1000 : 1)) * 1000) + 500 : 10000 * (n + 1);
+                    onWait(w); await sleep(w)
+                }
+            }
+        }
+        const IMP_SYS = () => `You are an operations agent that imports goals into the team commitment tracker for LightWork AI, a 20-30 person startup.
+Work through the source text ONE GOAL AT A TIME. For each goal, create it (or use the existing task if the board already has it), then apply EVERY fact the text states about it: owner, due date, team, progress updates (with their date if one is given), risks or blockers, completion. Use only facts from the text or the user's answers. Never invent or guess. If something important is missing or ambiguous (especially the due date, owner or team), don't guess: add an "ask" action with one short, specific question.
+Reply with ONLY a JSON object: {"note":"<a few words on what you are doing>","actions":[...],"finished":true|false}
+Action types:
+{"type":"create_task","ref":"<temporary name such as g1>","team":"Engineering|Product|Commercial|Operations","title":"<short title>","owner":"<name or empty>","due":"<YYYY-MM-DD or empty>"}
+{"type":"set_field","id":"<task id or ref>","field":"owner|due|team|title","value":"<new value>"}
+{"type":"add_update","id":"<task id or ref>","note":"<progress update in a short sentence>","date":"<YYYY-MM-DD if the text gives one, else empty>"}
+{"type":"set_risk","id":"<task id or ref>","at_risk":true|false}
+{"type":"mark_done","id":"<task id or ref>","done_on":"<YYYY-MM-DD if given, else empty>"}
+{"type":"ask","id":"<task id or ref, or empty>","question":"<one short question for the user>"}
+Rules:
+- Today is ${realToday()}. Resolve relative dates such as "end of month" or "next Friday" to YYYY-MM-DD. A date without a year means its next occurrence.
+- Status (on track, at risk, missed) is calculated automatically from these fields. Set risk only when the text describes a delay, blocker or concern. Mark done only when the work is clearly complete.
+- A ref you create can be used as the id in later actions, in the same reply or later ones.
+- You will see the result of every action. If one failed, fix it next turn.
+- Set "finished": true only when every goal in the text has been fully handled.`;
+        const brief = items => JSON.stringify(items.map(c => { const lu = lastUp(c); return { id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due || "", at_risk: c.risk, done: c.done, last_update: lu ? lu.d + ": " + lu.t : "" } }));
+        let IMP = null;
+        async function runAgent(src, answers, show) {
+            const work = JSON.parse(JSON.stringify(S.items)), refs = {}, created = [], hist = [], acts = [], qs = [], log = [];
+            const lines = src.split(/\n+/).filter(l => l.trim()).length, max = Math.min(40, (answers ? answers.length : lines) * 2 + 4); let stop = "";
+            for (let step = 1; step <= max; step++) {
+                show(log, "Working (step " + step + ")...");
+                const prompt = "SOURCE TEXT:\n" + src + (answers ? "\n\nTHE USER HAS ANSWERED YOUR QUESTIONS. Apply these answers to the tasks on the board. Ask again only if an answer is itself unclear.\n" + answers.map(x => "Q: " + x.q + (x.id ? " (task " + x.id + ")" : "") + "\nA: " + x.a).join("\n") : "") +
+                    "\n\nBOARD NOW:\n" + brief(work) + "\n\nACTIONS SO FAR AND THEIR RESULTS:\n" + (hist.length ? hist.slice(-60).join("\n") : "(none yet)") + (qs.length ? "\n\nQUESTIONS ALREADY QUEUED:\n" + qs.map(x => "- " + x.q).join("\n") : "") + "\n\nStep " + step + " of at most " + max + ". Handle the next goal, or finish.";
+                let r; try { r = pj(await aiRetry(IMP_SYS(), prompt, w => show(log, "Waiting " + Math.round(w / 1000) + "s for the AI rate limit..."))) } catch (e) { stop = (e && e.message) || "AI error"; break }
+                const list = Array.isArray(r && r.actions) ? r.actions.slice(0, 25) : [];
+                list.forEach(a => {
+                    if (!a || typeof a !== "object") return;
+                    if (a.type === "ask") { const q = String(a.question || "").trim(), id = refs[a.id] || a.id || ""; if (q && qs.length < 15 && !qs.some(x => x.q === q)) qs.push({ q, id }); hist.push("ask: " + q + " -> queued"); return }
+                    const res = execA(work, a, refs, created), A = JSON.stringify(a, (k, v) => k === "__id" ? undefined : v);
+                    hist.push(A + " -> " + (res.err ? "ERROR: " + res.err : res.ok)); if (res.err) log.push({ e: 1, t: "Fixing: " + res.err }); else { acts.push(a); if (res.text) log.push({ t: res.text }) }
+                });
+                if (r && r.finished === true) break; if (!list.length) break; if (step === max) stop = "reached the step limit";
+            }
+            return { acts, qs, log, stop }
+        }
+        // Applies the agent's actions to the latest saved data, so nobody else's changes are overwritten.
+        async function commitActs(acts) {
+            if (shared() && !saving && !again) { try { await load() } catch (e) { } }
+            const refs = {}, created = [], before = {};
+            acts.forEach(a => { if (a.type !== "create_task") { const id = refs[a.id] || a.id, c = S.items.find(x => x.id === id); if (c && !before[id] && !created.includes(id)) before[id] = JSON.parse(JSON.stringify(c)) } execA(S.items, a, refs, created) });
+            if (acts.length) { save(); render() } return { before, created, refs }
+        }
+        function showProg(log, head) { $("#iout").innerHTML = `<div class="card"><b>${esc(head)}</b><ul class="ilog">${log.map(l => `<li${l.e ? ' class="e"' : ""}>${esc(l.t)}</li>`).join("")}</ul></div>` }
+        async function agentImport(src, answers, round) {
+            $("#ibtn").disabled = true; $("#ist").textContent = "";
+            const res = await runAgent(src, answers, showProg);
+            if (!answers && !res.acts.length && res.stop) { $("#ibtn").disabled = false; return fallbackImport(src, new Error(res.stop)) }
+            const u = await commitActs(res.acts); $("#ibtn").disabled = false;
+            const qs = (round || 1) >= 3 ? [] : res.qs.map(x => ({ ...x, id: u.refs[x.id] || x.id }));
+            const nNew = u.created.length, nUpd = Object.keys(u.before).length, done = res.log.filter(l => !l.e);
+            IMP = { src, before: u.before, created: u.created, qs, round: round || 1 };
+            $("#ist").textContent = res.stop ? "The agent stopped early (" + res.stop + "). Everything it did up to then is saved." : "";
+            const tl = id => { const c = S.items.find(x => x.id === id); return c ? `<a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a>` : "" };
+            $("#iout").innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><b>${answers ? "Answers applied" : "Import complete"}: ${nNew} created, ${nUpd} existing updated</b>${nNew || nUpd ? '<span id="iundo"><button>Undo</button></span>' : ""}</div>
+${done.length ? `<details${done.length <= 12 ? " open" : ""}><summary class="mut">What the agent did (${done.length})</summary><ul class="ilog">${done.map(l => `<li>${esc(l.t)}</li>`).join("")}</ul></details>` : '<p class="mut">No changes were needed.</p>'}</div>` +
+                (qs.length ? `<div class="card" id="iqs"><b>The agent has ${qs.length} question${qs.length > 1 ? "s" : ""}</b><p class="mut" style="margin:2px 0 4px">Your tasks are already saved. Answer what you can and the agent will update them. Leave any blank to keep things as they are.</p>` +
+                    qs.map((x, k) => `<div class="qa">${x.id ? tl(x.id) + "<br>" : ""}<label for="qa${k}">${esc(x.q)}</label><input id="qa${k}" autocomplete="off"></div>`).join("") +
+                    `<div class="row" style="margin-top:8px"><button class="p" id="iansw">Apply answers</button><button id="iskip">Keep as is</button></div></div>` : "");
+            if ($("#iundo")) $("#iundo button").onclick = () => { if (!IMP) return; const { before, created } = IMP; S.items = S.items.filter(c => !created.includes(c.id)).map(c => before[c.id] || c); IMP = null; save(); render(); $("#iundo").innerHTML = '<span class="mut">Undone</span>'; if ($("#iqs")) $("#iqs").remove() };
+            if (qs.length) {
+                $("#iskip").onclick = () => { $("#iqs").innerHTML = '<p class="mut" style="margin:0">Questions skipped. Tasks are saved with the information provided.</p>' };
+                $("#iansw").onclick = () => { const ans = qs.map((x, k) => ({ ...x, a: $("#qa" + k).value.trim() })).filter(x => x.a); if (!ans.length) return $("#iskip").click(); agentImport(src, ans, (round || 1) + 1) };
+            }
+        }
+        $("#ibtn").onclick = () => { const txt = $("#itext").value.trim(); if (!txt) return; if (!aiOn()) return fallbackImport(txt); $("#itext").value = ""; agentImport(txt) };
+        function fallbackImport(txt, err) {
+            const R = txt.split(/\n+|;/).filter(x => x.trim()).map(l => { const m = l.match(/^\s*([A-Za-z]+)\s*[:\-]\s*(.+?)(?:\s+(?:by|before|due)\s+(.+))?$/i); return m ? { team: tm(m[1]), title: m[2], owner: "", due: pd(m[3] || "") } : { team: TEAMS[0], title: l.trim(), owner: "", due: "" } });
+            $("#ist").textContent = why(err);
             $("#iout").innerHTML = "<table>" + R.map((r, k) => `<tr><td><input type="checkbox" id="ik${k}" checked></td><td><select id="it${k}">${TEAMS.map(t => `<option${t === r.team ? " selected" : ""}>${t}</option>`).join("")}</select></td><td><input id="ii${k}" value="${esc(r.title)}" style="width:100%"></td><td><input id="io${k}" value="${esc(r.owner)}" placeholder="Owner" size="9"></td><td><input type="date" id="id${k}" value="${esc(r.due)}"></td></tr>`).join("") + '</table><button class="p" id="iadd">Add to board</button>';
             $("#iadd").onclick = () => {
-                const rows = R.map((r, k) => ({ k, on: $("#ik" + k).checked, due: $("#id" + k).value })).filter(x => x.on); if (rows.some(x => !x.due)) { alert("Add a due date to every ticked row."); return }
-                rows.forEach(x => S.items.push({ id: "c" + Date.now() + x.k, team: $("#it" + x.k).value, title: $("#ii" + x.k).value, owner: $("#io" + x.k).value || "Unassigned", due: x.due, created: realToday(), log: [], risk: false, done: false, doneOn: null })); save(); render(); $("#iout").innerHTML = '<p class="mut">' + rows.length + " commitment(s) added. See the Board tab.</p>"; $("#itext").value = ""
+                const rows = R.map((r, k) => ({ k, on: $("#ik" + k).checked, due: $("#id" + k).value })).filter(x => x.on);
+                rows.forEach(x => S.items.push({ id: newId(), team: $("#it" + x.k).value, title: $("#ii" + x.k).value, owner: $("#io" + x.k).value || "Unassigned", due: x.due, created: realToday(), log: [], risk: false, done: false, doneOn: null })); save(); render(); $("#iout").innerHTML = '<p class="mut">' + rows.length + " commitment(s) added. See the Board tab.</p>"; $("#itext").value = ""
             }
-        };
+        }
         function tmpl() {
             const T = realToday(), I = info, o = open(), miss = o.filter(c => I(c).st === "missed"), risk = o.filter(c => I(c).st === "at-risk"), stale = o.filter(c => I(c).needs && !miss.includes(c) && !risk.includes(c)), dn = S.items.filter(c => c.done && c.doneOn && diff(T, c.doneOn) <= 7);
-            const L = (h, a, f) => a.length ? "\n" + h + "\n" + a.map(f).join("\n") + "\n" : "", b = c => "- " + c.team + ": " + c.title + " (" + c.owner + ", due " + c.due + ")";
+            const L = (h, a, f) => a.length ? "\n" + h + "\n" + a.map(f).join("\n") + "\n" : "", b = c => "- " + c.team + ": " + c.title + " (" + c.owner + ", " + (c.due ? "due " + c.due : "no due date") + ")";
             return "Weekly summary, week ending " + T + "\n\nOverall: " + S.items.length + " commitments. " + (o.length - miss.length - risk.length) + " on track, " + risk.length + " at risk, " + miss.length + " missed, " + S.items.filter(c => c.done).length + " done.\n" +
                 L("MISSED", miss, c => b(c) + ": " + I(c).why) + L("AT RISK", risk, c => b(c) + ": " + I(c).why) + L("NEEDS AN UPDATE", stale, c => b(c) + ": " + I(c).why) + L("COMPLETED THIS WEEK", dn, b)
         }
@@ -508,20 +663,20 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
         const NAMES = { id: "ID", team: "Team", title: "Title", owner: "Owner", due: "Due date", created: "Created on", risk: "Owner flagged a risk", done: "Done", doneOn: "Done on", log: "Update history" };
         const ORD = Object.keys(NAMES);
         const fmt = (k, v) => k === "log" ? (v.length === 1 ? "1 entry" : v.length + " entries") + " (listed below)" : typeof v === "boolean" ? (v ? "Yes" : "No") : v == null || v === "" ? '<span class="mut">Not set</span>' : esc(v);
-        const pl = (n, w) => n + " " + w + (n === 1 ? "" : "s"), rel = n => n < 0 ? pl(-n, "day") + " ago" : n === 0 ? "today" : "in " + pl(n, "day");
+        const pl = (n, w) => n + " " + w + (n === 1 ? "" : "s"), rel = n => n === null ? "no due date" : n < 0 ? pl(-n, "day") + " ago" : n === 0 ? "today" : "in " + pl(n, "day");
         function rDetail(id) {
             const c = S.items.find(x => x.id === id), el = $("#detail"), back = '<p><a href="#">&larr; Back to board</a></p>';
             if (!c) { el.innerHTML = back + '<div class="box">This commitment no longer exists. It may have been deleted.</div>'; return }
             const i = info(c), lu = lastUp(c), flagged = !c.done && (i.st !== "on-track" || i.needs);
             el.innerHTML = back + `<div class="box"><div class="row"><span class="pill ${i.st}">${LBL[i.st]}</span>${i.needs && i.st === "on-track" ? '<span class="pill at-risk">Needs update</span>' : ""}<h2 style="margin:0;font-size:20px">${esc(c.title)}</h2></div>
-<div class="mut">${esc(c.team)} / ${esc(c.owner)} / due ${c.due} (${rel(i.left)})</div>${i.why && !c.done ? `<div class="flag">${esc(i.why)}</div>` : ""}</div>
+<div class="mut">${esc(c.team)} / ${esc(c.owner)} / ${c.due ? "due " + c.due + " (" + rel(i.left) + ")" : "no due date"}</div>${i.why && !c.done ? `<div class="flag">${esc(i.why)}</div>` : ""}</div>
 <div class="grid"><div class="box"><b>Status as of ${realToday()}</b><p class="mut">Worked out by fixed rules from the stored data. Not saved itself.</p><table class="kv">
 <tr><td>Status</td><td>${LBL[i.st]}${i.needs && i.st === "on-track" ? " (needs update)" : ""}</td></tr><tr><td>Reason</td><td>${c.done ? "Marked done" : esc(i.why) || "No issues"}</td></tr>
-<tr><td>Due</td><td>${c.due}, ${rel(i.left)}</td></tr><tr><td>Last progress update</td><td>${lu ? lu.d + " (" + (i.since ? pl(i.since, "day") + " ago" : "today") + ")" : "None yet (" + pl(i.since, "day") + " since created)"}</td></tr>
+<tr><td>Due</td><td>${c.due ? c.due + ", " + rel(i.left) : "Not set"}</td></tr><tr><td>Last progress update</td><td>${lu ? lu.d + " (" + (i.since ? pl(i.since, "day") + " ago" : "today") + ")" : "None yet (" + pl(i.since, "day") + " since created)"}</td></tr>
 <tr><td>In Attention needed</td><td>${flagged ? "Yes" : "No"}</td></tr></table>
 <p class="mut" style="margin-bottom:0">Missed: past due and not done. At risk: owner flagged a risk, or due within 7 days with no update for 5+ days. Needs update: no update for 10+ days.</p></div>
 <div class="box"><b>Stored data</b><p class="mut">Every field saved for this commitment in this browser.</p><table class="kv">${Object.keys(c).sort((x, y) => ((ORD.indexOf(x) + 1) || 99) - ((ORD.indexOf(y) + 1) || 99)).map(k => `<tr><td>${esc(NAMES[k] || k)}</td><td>${fmt(k, c[k])}</td></tr>`).join("")}</table></div></div>
-<div class="box"><b>Update history (${c.log.length})</b>${c.log.length ? `<table class="kv" style="margin-top:6px">${c.log.slice().reverse().map(e => `<tr><td>${esc(e.d)}</td><td>${e.k === "change" ? '<span class="tag">Change</span> ' : ""}${esc(e.t)}</td></tr>`).join("")}</table>` : '<p class="mut">No updates logged yet.</p>'}
+<div class="box"><b>Update history (${c.log.length})</b>${c.log.length ? `<table class="kv" style="margin-top:6px">${c.log.slice().reverse().map(e => `<tr><td>${esc(e.d)}</td><td>${e.k === "change" ? '<span class="tag">Change</span> ' : ""}${e.src === "ai" ? '<span class="tag">Applied by AI</span> ' : ""}${esc(e.t)}</td></tr>`).join("")}</table>` : '<p class="mut">No updates logged yet.</p>'}
 ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-height:70px" placeholder="Add a progress update, e.g. webhooks done, testing Thursday"></textarea><div class="row"><label><input type="checkbox" id="drisk"${c.risk ? " checked" : ""}> At risk</label><button class="p" id="dadd">Add update</button></div></div>`}</div>
 <div class="box"><b>Edit details</b><p class="mut">Edits are recorded in the history as changes. They don't count as a progress update, so they don't reset the "no update" clock.</p><div class="row">
 <input id="etitle" value="${esc(c.title)}" style="flex:1;min-width:220px" aria-label="Title"><select id="eteam" aria-label="Team">${TEAMS.map(t => `<option${t === c.team ? " selected" : ""}>${t}</option>`).join("")}</select><input id="eowner" value="${esc(c.owner)}" size="12" placeholder="Owner" aria-label="Owner"><input type="date" id="edue" value="${esc(c.due)}" aria-label="Due date"><button class="p" id="esave">Save changes</button></div></div>
@@ -531,7 +686,7 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
             if ($("#dadd")) $("#dadd").onclick = () => { const t = $("#dnote").value.trim(); if (!t) { $("#dnote").focus(); return } c.log.push({ d: realToday(), t }); c.risk = $("#drisk").checked; fin() };
             $("#esave").onclick = () => {
                 const v = { title: $("#etitle").value.trim(), team: $("#eteam").value, owner: $("#eowner").value.trim() || "Unassigned", due: $("#edue").value }, L = { title: "Title", team: "Team", owner: "Owner", due: "Due date" };
-                if (!v.title || !v.due) { alert("Title and due date can't be empty."); return } let n = 0; Object.keys(v).forEach(k => { if (v[k] !== c[k]) { ch(L[k] + " changed from " + c[k] + " to " + v[k]); c[k] = v[k]; n++ } }); if (n) fin()
+                if (!v.title) { alert("Title can't be empty."); return } let n = 0; Object.keys(v).forEach(k => { if (v[k] !== c[k]) { ch(L[k] + " changed from " + (c[k] || "not set") + " to " + (v[k] || "not set")); c[k] = v[k]; n++ } }); if (n) fin()
             };
             if ($("#ddone")) $("#ddone").onclick = () => { c.done = true; c.doneOn = realToday(); c.log.push({ d: realToday(), t: "Marked done" }); fin() };
             if ($("#dreopen")) $("#dreopen").onclick = () => { c.done = false; c.doneOn = null; ch("Reopened"); fin() };
@@ -558,10 +713,10 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
             const mi = /miss|overdue|late/.test(ql), rk = /risk/.test(ql); if (mi && rk) { r = r.filter(x => x.i.st === "missed" || x.i.st === "at-risk"); h = "Missed or at risk" } else if (mi) { r = r.filter(x => x.i.st === "missed"); h = "Missed" } else if (/risk/.test(ql)) { r = r.filter(x => x.i.st === "at-risk"); h = "At risk" }
             else if (/update|stale|chase|nudge|attention/.test(ql)) { r = r.filter(x => !x.c.done && (x.i.st !== "on-track" || x.i.needs)); h = "Needing attention" }
             else if (/done|complete|finish/.test(ql)) { r = r.filter(x => x.c.done); h = "Done" }
-            else if (/week|soon|upcoming|next/.test(ql)) { r = r.filter(x => !x.c.done && x.i.left >= 0 && x.i.left <= 7); h = "Due in the next 7 days" }
+            else if (/week|soon|upcoming|next/.test(ql)) { r = r.filter(x => !x.c.done && x.i.left !== null && x.i.left >= 0 && x.i.left <= 7); h = "Due in the next 7 days" }
             else if (!own && !team) { const v = viewing(); if (v && /this|it\b/.test(ql)) r = r.filter(x => x.c === v); else return 'I can only answer simple questions without AI. Try asking about what\'s missed, at risk, due this week, needs chasing or done, or name a person or team.' }
             const sc = (own ? " for " + own : "") + (team ? " in " + team : ""); if (!r.length) return "Nothing matches: " + h.toLowerCase() + sc + ".";
-            return h + sc + " (" + r.length + "):\n" + r.map(x => "- " + x.c.title + " (" + x.c.team + ", " + x.c.owner + ", due " + x.c.due + "): " + (x.i.needs && x.i.st === "on-track" ? "Needs update" : LBL[x.i.st]) + (x.i.why && !x.c.done ? ", " + x.i.why : "")).join("\n")
+            return h + sc + " (" + r.length + "):\n" + r.map(x => "- " + x.c.title + " (" + x.c.team + ", " + x.c.owner + ", " + (x.c.due ? "due " + x.c.due : "no due date") + "): " + (x.i.needs && x.i.st === "on-track" ? "Needs update" : LBL[x.i.st]) + (x.i.why && !x.c.done ? ", " + x.i.why : "")).join("\n")
         }
         function linkify(t) {
             const ts = S.items.slice().sort((a, b) => b.title.length - a.title.length); let h = esc(t); if (!ts.length) return h;

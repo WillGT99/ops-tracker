@@ -108,7 +108,7 @@ async function relayAI(request, env, json) {
     }),
   });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) return json({ error: "groq " + r.status + ((d.error && d.error.message) ? ": " + d.error.message.slice(0, 120) : "") }, 502);
+  if (!r.ok) return json({ error: "groq " + r.status + ((d.error && d.error.message) ? ": " + d.error.message.slice(0, 400) : "") }, 502);
   const out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
   if (!out) return json({ error: "empty AI response" }, 502);
   return json({ text: out });
