@@ -23,7 +23,9 @@ In the Cloudflare dashboard, go to **Storage & Databases > D1** and create a dat
 | `ALLOWED_ORIGIN` | Text | Your GitHub Pages address, e.g. `https://willgt99.github.io` (no trailing slash, no path) |
 | `MODEL` | Text, optional | Defaults to `openai/gpt-oss-120b` |
 
-4. Copy the Worker's URL (shown on its overview page).
+4. In **Settings > Triggers > Cron Triggers**, add the schedule `0 7 * * *`. Cloudflare schedules in UTC, so this runs the daily check at 8am British Summer Time (7am UK time in winter).
+5. Optional: to have the 8am check post to Slack, create an incoming webhook in Slack and add it as a Secret called `SLACK_WEBHOOK_URL`. You can also add `APP_URL` (Text) with the tracker's address, so the Slack message links to it.
+6. Copy the Worker's URL (shown on its overview page).
 
 To change the password later, edit `APP_PASSWORD`. Everyone is signed out and asked for the new one.
 

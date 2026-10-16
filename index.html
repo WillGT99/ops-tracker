@@ -333,6 +333,14 @@
         .err{color:var(--bad);font-size:13px}#banner{border-color:var(--warn)}#banner.bad{border-color:var(--bad)}
         .ilog{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--mut)}.ilog li{margin:2px 0}.ilog li.e{color:var(--bad)}
         .qa{border-top:1px solid var(--line);padding:8px 0}button:disabled{opacity:.45;cursor:not-allowed}.unas{font-style:italic;color:var(--mut)}#tlist td{vertical-align:middle}.qa input{width:100%;margin-top:4px}
+        .pill.needs{background:#6941c6}.pill.none{background:#98a2b3}
+        .score{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:12px}
+        .sc{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)}.sc:hover{border-color:var(--acc)}.sc.on{outline:2px solid var(--acc);outline-offset:-1px}
+        .seg{display:inline-flex;gap:0}.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}.seg .on{background:var(--ink);color:#fff;border-color:var(--ink)}
+        .kan{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;align-items:flex-start}.col{flex:1 0 210px;min-width:210px;background:#e9edf3;border-radius:8px;padding:8px}
+        .col h4{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between}.kc{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:6px;padding:8px;margin-bottom:6px;font-size:13px}
+        .kc.missed{border-left-color:var(--bad)}.kc.at-risk{border-left-color:var(--warn)}.kc.needs{border-left-color:#6941c6}.kc.done{border-left-color:#667085;opacity:.8}.kc .flag{font-size:12px;margin-top:2px}
+        .chk{background:#f6f8fb;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:13px}
     </style>
 </head>
 
@@ -388,7 +396,7 @@
     </div>
     <script>
         const WORKER_URL = "https://lightwork.willgthompson1999.workers.dev/";
-        const DEFAULT_TEAMS = ["Leadership", "Engineering", "Product", "Design", "Data", "Sales", "Marketing", "Customer Success", "Operations", "Finance", "People"], KEY = "lw_ops_v1";
+        const DEFAULT_TEAMS = ["Engineering", "Product", "Commercial", "Operations"], OLD_DEFAULT = "Leadership|Engineering|Product|Design|Data|Sales|Marketing|Customer Success|Operations|Finance|People", KEY = "lw_ops_v1";
         const $ = s => document.querySelector(s), esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
         const LBL = { "on-track": "On track", "at-risk": "At risk", missed: "Missed", done: "Done" };
         const realToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10) };
@@ -396,7 +404,7 @@
         const PWK = "lw_pw";
         let S = { items: [] }, VER = 0, PW = (() => { try { return localStorage.getItem(PWK) || "" } catch (e) { return "" } })(), saving = false, again = false;
         // The team list is shared data. Any team a task uses is always included.
-        const teams = () => { const t = Array.isArray(S.teams) && S.teams.length ? S.teams.slice() : DEFAULT_TEAMS.slice(); S.items.forEach(c => { if (c.team && !t.includes(c.team)) t.push(c.team) }); return t };
+        const teams = () => { const t = Array.isArray(S.teams) && S.teams.length && S.teams.join("|") !== OLD_DEFAULT ? S.teams.slice() : DEFAULT_TEAMS.slice(); S.items.forEach(c => { if (c.team && !t.includes(c.team)) t.push(c.team) }); return t };
         // Owner is optional. An empty owner means unassigned; placeholder words and team names are never stored as a person.
         const cleanOwner = (v, tl) => { const o = String(v == null ? "" : v).trim().slice(0, 60); if (/^(unassigned|none|n\/?a|tbd|tba|unknown|nobody|no one|not set|-+|\?)$/i.test(o)) return ""; if ((tl || teams()).some(t => t.toLowerCase() === o.toLowerCase())) return ""; return o };
         const tidy = () => S.items.forEach(c => { c.owner = cleanOwner(c.owner) });
@@ -439,7 +447,7 @@
             if (!shared()) { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) S = s } catch (e) { } $("#out").classList.add("hide"); setSync("Saved in this browser only"); render(); return }
             if (!PW) return lock("");
             setSync("Loading...");
-            try { await load(); render(); setSync("Saved") }
+            try { await load(); render(); setSync("Saved"); loadChecks() }
             catch (e) { if (e.auth) lock("Enter the team password to continue."); else { setSync("Couldn't load", true); banner("Couldn't load the shared data (" + esc(e.message) + '). <button class="p" onclick="location.reload()">Reload</button>', true) } }
         }
         function info(c) {
@@ -452,11 +460,27 @@
         }
         const nudge = (c, i) => `${c.owner ? "Hi " + c.owner : "Hi team"}, "${c.title}" ${i.left === null ? "doesn't have a due date yet" : i.left < 0 ? "was due " + -i.left + " days ago" : "is due in " + i.left + " days"}${i.since >= 5 ? " and there's been no update for " + i.since + " days" : c.risk ? " and you've flagged a risk" : ""}. Where are we, and is anything blocking you?`;
         const copy = t => { try { navigator.clipboard.writeText(t) } catch (e) { } };
+        // Results of the automatic 8am check (and any manual runs), stored by the Worker.
+        let CHECKS = [];
+        async function loadChecks() { if (!shared() || !PW) return; try { const r = await api("checks"); if (r.ok) { CHECKS = (await r.json()).checks || []; rAttn() } } catch (e) { } }
+        function showNudges(list) { const t = list.length ? list.join("\n\n") : "No nudges needed today."; $("#nout").innerHTML = '<p class="mut">Draft nudges, ready to paste into Slack or email:</p><textarea id="ntxt"></textarea><button id="ncp">Copy</button>'; $("#ntxt").value = t; $("#ncp").onclick = () => copy(t) }
+        function chkHtml() {
+            if (!shared()) return "";
+            const auto = CHECKS.find(c => c.source === "schedule"), last = CHECKS[0];
+            const when = c => (c.date === realToday() ? "today" : fdate(c.date)) + " at " + c.time;
+            if (!auto && !last) return '<div class="chk">The automatic check runs every morning at 8:00 (BST) and drafts nudges for anything flagged. It hasn\'t run yet. Use <b>Run daily check</b> to try it now.</div>';
+            const c = auto || last, n = c.flagged.length;
+            return `<div class="chk"><b>${c.source === "schedule" ? "Automatic morning check" : "Last check"}</b> ran ${when(c)} and flagged ${n} item${n === 1 ? "" : "s"}${c.slack === "sent" ? ", posted to Slack" : ""}.${last && last !== c ? ` <span class="mut">Last run manually ${when(last)}.</span>` : ""}${n ? ` <details style="margin-top:4px"><summary class="mut">Nudges it drafted (${n})</summary><textarea id="chkn" style="margin-top:6px;min-height:120px" readonly>${esc(c.flagged.map(x => x.nudge).join("\n\n"))}</textarea><button id="chkc">Copy</button></details>` : ""}</div>`;
+        }
         function rAttn() {
             const f = open().map(c => ({ c, i: info(c) })).filter(x => x.i.st !== "on-track" || x.i.needs).sort((a, b) => (b.i.st === "missed") - (a.i.st === "missed"));
             $("#attn").innerHTML = `<div class="row" style="justify-content:space-between"><b>Attention needed (${f.length})</b><button class="p" id="nud">Run daily check</button></div>` +
-                (f.length ? f.map(x => `<div class="card"><span class="pill ${x.i.st}">${x.i.needs && x.i.st === "on-track" ? "Needs update" : LBL[x.i.st]}</span> <a class="t" href="#task/${encodeURIComponent(x.c.id)}">${esc(x.c.title)}</a> <span class="mut">${esc(x.c.team)} / ${ownerTxt(x.c)}</span><div class="flag">${esc(x.i.why)}</div></div>`).join("") : '<p class="mut">Nothing needs attention today.</p>') + '<div id="nout"></div>';
-            $("#nud").onclick = () => { const t = f.length ? f.map(x => nudge(x.c, x.i)).join("\n\n") : "No nudges needed today."; $("#nout").innerHTML = '<p class="mut">Draft nudges, ready to paste into Slack or email:</p><textarea id="ntxt"></textarea><button id="ncp">Copy</button>'; $("#ntxt").value = t; $("#ncp").onclick = () => copy(t) }
+                (f.length ? f.map(x => `<div class="card"><span class="pill ${x.i.needs && x.i.st === "on-track" ? "needs" : x.i.st}">${x.i.needs && x.i.st === "on-track" ? "Needs update" : LBL[x.i.st]}</span> <a class="t" href="#task/${encodeURIComponent(x.c.id)}">${esc(x.c.title)}</a> <span class="mut">${esc(x.c.team)} / ${ownerTxt(x.c)}</span><div class="flag">${esc(x.i.why)}</div></div>`).join("") : '<p class="mut">Nothing needs attention today.</p>') + '<div id="nout"></div>';
+            $("#nout").insertAdjacentHTML("beforebegin", chkHtml()); if ($("#chkc")) $("#chkc").onclick = () => copy($("#chkn").value);
+            $("#nud").onclick = async () => {
+                if (shared()) { $("#nud").disabled = true; try { const r = await api("checks/run", { method: "POST" }), d = await r.json(); if (r.ok) { CHECKS.unshift(d); rAttn(); showNudges(d.flagged.map(x => x.nudge)); return } } catch (e) { } finally { if ($("#nud")) $("#nud").disabled = false } }
+                showNudges(f.map(x => nudge(x.c, x.i)))
+            }
         }
         function card(c) {
             const i = info(c), l = lastUp(c); return `<div class="card"><span class="pill ${i.st}">${LBL[i.st]}</span> <a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a><div class="mut">${ownerTxt(c)}, ${c.due ? `due ${c.due} (${i.left < 0 ? -i.left + " days ago" : "in " + i.left + " days"})` : "no due date"}</div>
@@ -464,7 +488,31 @@
 <div class="row" style="margin-top:6px">${c.done ? "" : `<button onclick="act('${c.id}','done')">Mark done</button><button onclick="act('${c.id}','note')">Add note</button>`}<button onclick="act('${c.id}','del')">Delete</button></div>
 ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</summary>${c.log.slice().reverse().map(e => `<div class="mut">${e.d}: ${e.k === "change" ? "(change) " : ""}${e.src === "ai" ? "(AI) " : ""}${esc(e.t)}</div>`).join("")}</details>` : ""}</div>`
         }
-        function rBoard() { $("#t0").innerHTML = (S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>') + '<div class="grid">' + teams().filter(t => S.items.some(c => c.team === t)).map(t => `<div class="box"><b>${t}</b>${S.items.filter(c => c.team === t).map(card).join("") || '<p class="mut">No commitments yet. Use Import goals.</p>'}</div>`).join("") + "</div>" }
+        // Board: a health card per team, then the selected team's tasks as a kanban (or the original list).
+        let VIEW = (() => { try { return JSON.parse(localStorage.getItem("lw_view")) || {} } catch (e) { return {} } })();
+        const setView = o => { VIEW = { ...VIEW, ...o }; try { localStorage.setItem("lw_view", JSON.stringify(VIEW)) } catch (e) { } rBoard() };
+        const COLS = [["missed", "Missed"], ["at-risk", "At risk"], ["needs", "Needs update"], ["on-track", "On track"], ["done", "Done"]];
+        const colOf = c => { const i = info(c); return i.st === "on-track" && i.needs ? "needs" : i.st };
+        const health = l => { const k = l.map(colOf); return !l.length ? ["none", "No tasks"] : k.includes("missed") ? ["missed", "Off track"] : k.includes("at-risk") ? ["at-risk", "At risk"] : k.includes("needs") ? ["needs", "Needs updates"] : ["on-track", "On track"] };
+        const fdate = d => d ? new Date(D(d)).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }) : "";
+        function kcard(c, showTeam) {
+            const i = info(c), k = colOf(c);
+            return `<div class="kc ${k}"><a class="t" href="#task/${encodeURIComponent(c.id)}">${esc(c.title)}</a><div class="mut">${showTeam ? esc(c.team) + " · " : ""}${ownerTxt(c)} · ${c.done ? "done " + fdate(c.doneOn) : c.due ? "due " + fdate(c.due) : "no due date"}</div>${!c.done && i.why ? `<div class="flag">${esc(i.why)}</div>` : ""}</div>`
+        }
+        function rBoard() {
+            const welcome = S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>';
+            const ts = teams(), team = ts.includes(VIEW.team) ? VIEW.team : "", view = VIEW.view === "list" ? "list" : "kanban";
+            const score = '<div class="score">' + ts.map(t => { const l = S.items.filter(c => c.team === t), h = health(l), n = k => l.filter(c => colOf(c) === k).length;
+                return `<button class="sc${t === team ? " on" : ""}" data-team="${esc(t)}" aria-pressed="${t === team}"><div class="row" style="justify-content:space-between"><b>${esc(t)}</b><span class="pill ${h[0]}">${h[1]}</span></div><div class="mut" style="margin-top:4px">${n("on-track")} on track · ${n("at-risk")} at risk · ${n("missed")} missed${n("needs") ? " · " + n("needs") + " need update" : ""} · ${n("done")} done</div></button>` }).join("") + "</div>";
+            const items = S.items.filter(c => !team || c.team === team);
+            const bar = `<div class="row" style="margin:4px 0 10px"><b>${team ? esc(team) : "All teams"}</b>${team ? '<button data-team="">Show all teams</button>' : '<span class="mut">Click a team to focus on it</span>'}<span class="seg" style="margin-left:auto"><button data-v="kanban" class="${view === "kanban" ? "on" : ""}">Kanban</button><button data-v="list" class="${view === "list" ? "on" : ""}">List</button></span></div>`;
+            const byDue = (a, b) => (a.due || "9999") < (b.due || "9999") ? -1 : (a.due || "9999") > (b.due || "9999") ? 1 : 0;
+            const kanban = '<div class="kan">' + COLS.map(([k, label]) => { const l = items.filter(c => colOf(c) === k).sort(k === "done" ? (a, b) => (b.doneOn || "") < (a.doneOn || "") ? -1 : 1 : byDue);
+                return `<div class="col"><h4><span>${label}</span><span class="mut">${l.length}</span></h4>${l.map(c => kcard(c, !team)).join("") || '<div class="mut" style="font-size:12px">None</div>'}</div>` }).join("") + "</div>";
+            const list = '<div class="grid">' + ts.filter(t => (!team || t === team) && S.items.some(c => c.team === t)).map(t => `<div class="box"><b>${esc(t)}</b>${S.items.filter(c => c.team === t).map(card).join("")}</div>`).join("") + "</div>";
+            $("#t0").innerHTML = welcome + (S.items.length ? score + bar + (view === "kanban" ? kanban : list) : "");
+            $("#t0").onclick = e => { const b = e.target.closest("[data-team],[data-v]"); if (!b) return; if (b.dataset.v) setView({ view: b.dataset.v }); else setView({ team: b.dataset.team }) };
+        }
         function act(id, a) {
             const c = S.items.find(x => x.id === id); if (a === "done") { c.done = true; c.doneOn = realToday(); c.log.push({ d: realToday(), t: "Marked done" }) }
             else if (a === "note") { const t = prompt('Update for "' + c.title + '"'); if (!t) return; c.log.push({ d: realToday(), t }); c.risk = confirm("Is it at risk?\nOK = at risk, Cancel = on track") }
@@ -614,7 +662,7 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
         const RULES = () => `Owner is the person responsible for the work. Infer it whenever the text ties the work to a named person: "Priya says it's 90% done", "Tom reckons it's on track", "Jess has made a start", "Sam is on it", "with Aisha", "Raj is handling it". A person giving the status of a piece of work is its owner unless the text says someone else owns it. When a sentence such as "they need to finish X" follows one naming a person, use that person only if the text clearly means them. Owner must be a person's name, never a team or department. If no person is linked to the work, leave owner empty: it is shown as Unassigned, which is fine.
 Today is ${realToday()}. Resolve relative dates such as "end of month", "next Friday" or "Q4" to YYYY-MM-DD. A day or date without a month or year means the matching date closest to today, which may be in the past (for example something overdue, or completed earlier). Use any weekday given (e.g. "Tuesday the 13th") to confirm the date.
 Status (on track, at risk, missed) is calculated automatically from these fields. Set risk only when the text describes a delay, blocker or concern. Mark done only when the work is clearly complete.
-Teams: ${teams().join(", ")}. Map synonyms to the closest existing team (for example "eng" or "dev" to Engineering, "CS" to Customer Success, "commercial" or "BD" to Sales) before considering add_team.`;
+LightWork's teams: ${teams().join(", ")}. Put every piece of work under one of these. Map other departments to the closest one: engineering, dev, DevOps, IT, data and security go to Engineering; design, UX and research go to Product; sales, sales ops, marketing, partnerships, BD and customer success go to Commercial; finance, HR, people, legal, recruiting and office go to Operations. Use add_team only if the text explicitly says a new team has been set up.`;
         const LIST_SYS = `List every separate goal, task, deliverable, fix or piece of work in the text, including finished ones and ones mentioned in passing. Do not merge goals. Reply with ONLY a JSON object: {"goals":[{"goal":"<short title>"}]}`;
         const PLAN_SYS = () => `You read messy text (lists, notes, emails, tables) and find every goal or commitment in it. Facts about one goal are often spread across the text: an owner list, a dates table, a later paragraph, a "who's doing what" section. For each goal, gather EVERY fact from ANYWHERE in the text.
 Be exhaustive: every separate deliverable, task, launch, document, fix or piece of work with an owner, team or deadline is its own goal, even if it is mentioned briefly or in passing. Work that is already finished still counts. A follow-on task mentioned in the same sentence as another is a separate goal. Do not merge goals. Before replying, re-read the text from start to end and check you haven't missed one.
@@ -756,7 +804,8 @@ ${warn.map(l => `<div class="flag">${esc(l.t)}</div>`).join("")}${done.length ? 
         function tmpl() {
             const T = realToday(), I = info, o = open(), miss = o.filter(c => I(c).st === "missed"), risk = o.filter(c => I(c).st === "at-risk"), stale = o.filter(c => I(c).needs && !miss.includes(c) && !risk.includes(c)), dn = S.items.filter(c => c.done && c.doneOn && diff(T, c.doneOn) <= 7);
             const L = (h, a, f) => a.length ? "\n" + h + "\n" + a.map(f).join("\n") + "\n" : "", b = c => "- " + c.team + ": " + c.title + " (" + (c.owner || "unassigned") + ", " + (c.due ? "due " + c.due : "no due date") + ")";
-            return "Weekly summary, week ending " + T + "\n\nOverall: " + S.items.length + " commitments. " + (o.length - miss.length - risk.length) + " on track, " + risk.length + " at risk, " + miss.length + " missed, " + S.items.filter(c => c.done).length + " done.\n" +
+            const byTeam = teams().filter(t => S.items.some(c => c.team === t)).map(t => { const l = S.items.filter(c => c.team === t), n = k => l.filter(c => colOf(c) === k).length; return "- " + t + ": " + health(l)[1] + " (" + n("on-track") + " on track, " + n("at-risk") + " at risk, " + n("missed") + " missed, " + n("needs") + " need an update, " + l.filter(c => c.done && c.doneOn && diff(T, c.doneOn) <= 7).length + " completed this week)" }).join("\n");
+            return "Weekly summary, week ending " + T + "\n\nOverall: " + S.items.length + " commitments. " + (o.length - miss.length - risk.length) + " on track, " + risk.length + " at risk, " + miss.length + " missed, " + S.items.filter(c => c.done).length + " done.\n" + (byTeam ? "\nBY TEAM\n" + byTeam + "\n" : "") +
                 L("MISSED", miss, c => b(c) + ": " + I(c).why) + L("AT RISK", risk, c => b(c) + ": " + I(c).why) + L("NEEDS AN UPDATE", stale, c => b(c) + ": " + I(c).why) + L("COMPLETED THIS WEEK", dn, b)
         }
         $("#sbtn").onclick = async () => {
@@ -766,7 +815,7 @@ ${warn.map(l => `<div class="flag">${esc(l.t)}</div>`).join("")}${done.length ? 
         }; $("#scopy").onclick = () => copy($("#sout").value);
         $("#tabs").innerHTML = ["Board", "Log an update", "Import goals", "Weekly summary", "Teams"].map((n, i) => `<button data-t="${i}">${n}</button>`).join("");
         $("#tabs").onclick = e => { const i = e.target.dataset.t; if (i == null) return; document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === i));[0, 1, 2, 3, 4].forEach(k => $("#t" + k).classList.toggle("hide", k != i)); if (i === "4") rTeams() };
-        $("#blank").onclick = () => { if (confirm("Delete all commitments and their history? This can't be undone.")) { S = { items: [], teams: S.teams }; save(); render() } };
+        $("#blank").onclick = () => { const t = prompt("This deletes every commitment and its history for everyone using the tracker. It can't be undone.\n\nType DELETE to confirm."); if (t === null) return; if (t.trim() !== "DELETE") { alert("Nothing was deleted. To clear everything, type DELETE in capitals."); return } S = { items: [], teams: S.teams }; save(); render() };
         const NAMES = { id: "ID", team: "Team", title: "Title", owner: "Owner", due: "Due date", created: "Created on", risk: "Owner flagged a risk", done: "Done", doneOn: "Done on", log: "Update history" };
         const ORD = Object.keys(NAMES);
         const fmt = (k, v) => k === "owner" && !v ? '<span class="unas">Unassigned</span>' : k === "log" ? (v.length === 1 ? "1 entry" : v.length + " entries") + " (listed below)" : typeof v === "boolean" ? (v ? "Yes" : "No") : v == null || v === "" ? '<span class="mut">Not set</span>' : esc(v);
@@ -775,7 +824,7 @@ ${warn.map(l => `<div class="flag">${esc(l.t)}</div>`).join("")}${done.length ? 
             const c = S.items.find(x => x.id === id), el = $("#detail"), back = '<p><a href="#">&larr; Back to board</a></p>';
             if (!c) { el.innerHTML = back + '<div class="box">This commitment no longer exists. It may have been deleted.</div>'; return }
             const i = info(c), lu = lastUp(c), flagged = !c.done && (i.st !== "on-track" || i.needs);
-            el.innerHTML = back + `<div class="box"><div class="row"><span class="pill ${i.st}">${LBL[i.st]}</span>${i.needs && i.st === "on-track" ? '<span class="pill at-risk">Needs update</span>' : ""}<h2 style="margin:0;font-size:20px">${esc(c.title)}</h2></div>
+            el.innerHTML = back + `<div class="box"><div class="row"><span class="pill ${i.st}">${LBL[i.st]}</span>${i.needs && i.st === "on-track" ? '<span class="pill needs">Needs update</span>' : ""}<h2 style="margin:0;font-size:20px">${esc(c.title)}</h2></div>
 <div class="mut">${esc(c.team)} / ${ownerTxt(c)} / ${c.due ? "due " + c.due + " (" + rel(i.left) + ")" : "no due date"}</div>${i.why && !c.done ? `<div class="flag">${esc(i.why)}</div>` : ""}</div>
 <div class="grid"><div class="box"><b>Status as of ${realToday()}</b><p class="mut">Worked out by fixed rules from the stored data. Not saved itself.</p><table class="kv">
 <tr><td>Status</td><td>${LBL[i.st]}${i.needs && i.st === "on-track" ? " (needs update)" : ""}</td></tr><tr><td>Reason</td><td>${c.done ? "Marked done" : esc(i.why) || "No issues"}</td></tr>
@@ -853,10 +902,10 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
         $("#out").onclick = () => { if (confirm("Sign out on this device?")) { S = { items: [] }; VER = 0; render(); lock("") } };
         $("#lform").onsubmit = async e => {
             e.preventDefault(); PW = $("#lpw").value; if (!PW) return; $("#lerr").textContent = "Checking...";
-            try { await load(); try { localStorage.setItem(PWK, PW) } catch (x) { } $("#lock").classList.add("hide"); $("#lpw").value = ""; $("#lerr").textContent = ""; banner(""); render(); setSync("Saved") }
+            try { await load(); try { localStorage.setItem(PWK, PW) } catch (x) { } $("#lock").classList.add("hide"); $("#lpw").value = ""; $("#lerr").textContent = ""; banner(""); render(); setSync("Saved"); loadChecks() }
             catch (err) { PW = ""; $("#lerr").textContent = err.auth ? "Wrong password." : "Couldn't connect (" + err.message + ")." }
         };
-        setInterval(refresh, 60000); document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh() });
+        setInterval(refresh, 60000); setInterval(() => { if (!document.hidden) loadChecks() }, 300000); document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh() });
         render(); $("#tabs button").click(); boot();
     </script>
 </body>

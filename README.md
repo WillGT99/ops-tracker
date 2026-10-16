@@ -6,12 +6,12 @@ A prototype operations agent for tracking team commitments and deadlines at Ligh
 
 ## What it does
 
-- **Board:** commitments grouped by team (Engineering, Product, Commercial, Operations), each with a status: on track, at risk, missed or done.
-- **Attention needed:** flags approaching deadlines with no recent update. "Run daily check" drafts nudge messages to paste into Slack or email.
+- **Board:** a health card for each team (Engineering, Product, Commercial, Operations), plus a kanban of tasks by status: missed, at risk, needs update, on track and done. Click a team to focus on it, or switch to a list view.
+- **Attention needed and the 8am check:** every morning at 8am (British Summer Time; 7am in winter), a scheduled job checks every commitment, flags anything missed, at risk or needing an update, and drafts a nudge for each. It can also post them to Slack. The results show at the top of the app, and **Run daily check** runs the same check on demand.
 - **Log an update:** paste plain-English updates. The AI logs the note, flags risk, marks work done, and moves due dates or owners. Clear updates are applied straight away, with an Undo button. Anything unclear (an ambiguous match, a date in the past, low AI confidence) waits for you to confirm. Updates applied by the AI are tagged in each task's history.
 - **Import goals:** paste goals in any format (a list, meeting notes, an email). An AI agent first reads the whole text and gathers every fact for each goal, even when owners or dates are in a separate section. It then works through the goals one at a time, creating each task (or updating an existing one) with owner, due date, team, dated progress updates, risks and completion. The app checks each action and reports errors back to the agent, which corrects itself. Before asking you anything, the agent checks its questions against the text and answers the ones it can. Everything is saved with an Undo button. Answer the remaining questions and it updates the tasks, or skip and the tasks keep what they have.
-- **Teams:** an editable team list (add, rename, remove), shared by everyone. The import agent can add a team it finds in your text.
-- **Weekly summary:** an AI-written summary across teams, which you can edit and copy.
+- **Teams:** LightWork's four teams to start with, editable (add, rename, remove) and shared by everyone. The import agent files other departments under the closest team.
+- **Weekly summary:** an AI-written summary with a line per team, then what's missed, at risk, needing an update and completed this week. You can edit and copy it.
 - **Task pages:** click any task for its full history, stored data, edits and nudges.
 - **Ask about tasks:** a chatbox that answers questions using only the tracker's data.
 
@@ -27,7 +27,7 @@ AI only does language work: reading updates, extracting goals and writing summar
 
 ## Trying it out
 
-Sign in with the team password. Click **Import goals** and paste a list of goals with deadlines, then log updates against them. Everyone signed in sees the same board. **Clear all** deletes every commitment for everyone.
+Sign in with the team password. Click **Import goals** and paste a list of goals with deadlines, then log updates against them. Everyone signed in sees the same board. **Clear all** deletes every commitment for everyone, after you type DELETE to confirm.
 
 ## How it's built
 
@@ -42,7 +42,6 @@ Sign in with the team password. Click **Import goals** and paste a list of goals
 
 - One shared password, not individual accounts, so there's no record of who changed what.
 - If two people save at the same moment, the second change is rejected and that person is asked to redo it. Other people's changes appear within a minute, or when you return to the tab.
-- The daily check is a button, not a scheduled job.
 - Chat history is cleared when the page reloads.
 - Groq's free tier allows 8,000 tokens a minute. The import agent handles up to 4 goals per AI call, keeps each request small, and paces itself using the remaining allowance Groq reports, so a 16-goal update takes about 5 calls (roughly 1 to 2 minutes).
 - The password is remembered in the browser until you sign out, so sign out on shared computers.

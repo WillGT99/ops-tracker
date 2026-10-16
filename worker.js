@@ -8,6 +8,10 @@
 //   APP_PASSWORD    Secret. The shared team password.
 //   ALLOWED_ORIGIN  Text. Your GitHub Pages origin, e.g. https://willgt99.github.io (no trailing slash).
 //   MODEL           Text, optional. Defaults to openai/gpt-oss-120b.
+//   SLACK_WEBHOOK_URL  Secret, optional. If set, the 8am check posts its flags to this Slack channel.
+//   APP_URL         Text, optional. Link to the tracker, included in Slack messages.
+// Daily check (Worker > Settings > Triggers > Cron Triggers): add "0 7 * * *".
+//   Cron runs in UTC: 07:00 UTC is 8am British Summer Time (7am in winter).
 // Binding (Worker > Settings > Bindings): D1 database, variable name DB.
 // The table is created automatically on first use.
 
@@ -40,12 +44,80 @@ export default {
       if (path === "/data" && request.method === "GET") return json(await readState(env));
       if (path === "/data" && request.method === "PUT") return await writeState(request, env, json);
       if ((path === "/ai" || path === "/") && request.method === "POST") return await relayAI(request, env, json);
+      if (path === "/checks" && request.method === "GET") return json(await listChecks(env));
+      if (path === "/checks/run" && request.method === "POST") return json(await runCheck(env, "manual"));
       return json({ error: "not found" }, 404);
     } catch (e) {
       return json({ error: String((e && e.message) || e).slice(0, 200) }, 500);
     }
   },
+
+  // Runs from the cron trigger at 07:00 UTC (8am BST). Acts at most once a day.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {
+      const now = londonNow();
+      await ensureChecks(env);
+      const already = await env.DB.prepare("SELECT 1 FROM checks WHERE source = 'schedule' AND run_date = ?").bind(now.date).first();
+      if (!already) await runCheck(env, "schedule");
+    })());
+  },
 };
+
+// ---------- Daily check ----------
+// The same fixed rules as the app: missed, at risk, needs update.
+function londonNow() {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+  const g = (t) => p.find((x) => x.type === t).value;
+  return { date: `${g("year")}-${g("month")}-${g("day")}`, hour: Number(g("hour")), time: `${g("hour")}:${g("minute")}` };
+}
+const dayNum = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+const daysBetween = (a, b) => Math.round((dayNum(a) - dayNum(b)) / 864e5);
+function taskStatus(c, today) {
+  const ups = (c.log || []).filter((e) => e.k !== "change"), last = ups.length ? ups[ups.length - 1].d : c.created;
+  const since = daysBetween(today, last), left = c.due ? daysBetween(c.due, today) : null, why = [];
+  let st = "on-track";
+  if (c.done) st = "done";
+  else if (left !== null && left < 0) { st = "missed"; why.push("overdue by " + -left + " days"); }
+  else {
+    if (c.risk) { st = "at-risk"; why.push("owner flagged a risk"); }
+    if (left !== null && left <= 7 && since >= 5) { st = "at-risk"; why.push("due in " + left + " days, no update for " + since + " days"); }
+  }
+  const needs = !c.done && st !== "missed" && (left === null || (left <= 7 && since >= 5) || since >= 10);
+  if (left === null && !c.done) why.push("no due date set");
+  if (needs && !why.length) why.push("no update for " + since + " days");
+  return { st, needs, why: why.join("; "), since, left };
+}
+const LABEL = { "on-track": "On track", "at-risk": "At risk", missed: "Missed" };
+function nudgeText(c, i) {
+  return `${c.owner ? "Hi " + c.owner : "Hi team"}, "${c.title}" ${i.left === null ? "doesn't have a due date yet" : i.left < 0 ? "was due " + -i.left + " days ago" : "is due in " + i.left + " days"}${i.since >= 5 ? " and there's been no update for " + i.since + " days" : c.risk ? " and you've flagged a risk" : ""}. Where are we, and is anything blocking you?`;
+}
+async function ensureChecks(env) {
+  if (!env.DB) throw new Error("D1 database not bound (variable name must be DB)");
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS checks (id INTEGER PRIMARY KEY AUTOINCREMENT, run_date TEXT NOT NULL, ran_at TEXT NOT NULL, source TEXT NOT NULL, result TEXT NOT NULL)").run();
+}
+async function runCheck(env, source) {
+  await ensureChecks(env);
+  const now = londonNow(), state = await readState(env), items = state.data.items || [];
+  const flagged = items.filter((c) => !c.done).map((c) => ({ c, i: taskStatus(c, now.date) }))
+    .filter((x) => x.i.st !== "on-track" || x.i.needs)
+    .sort((a, b) => ({ missed: 0, "at-risk": 1 }[a.i.st] ?? 2) - ({ missed: 0, "at-risk": 1 }[b.i.st] ?? 2))
+    .map(({ c, i }) => ({ id: c.id, title: c.title, team: c.team, owner: c.owner || "", status: i.st === "on-track" ? "needs-update" : i.st, why: i.why, nudge: nudgeText(c, i) }));
+  let slack = "off";
+  if (env.SLACK_WEBHOOK_URL) {
+    const lines = flagged.map((f) => `• *${f.status === "needs-update" ? "Needs update" : LABEL[f.status]}*: ${f.title} (${f.team}, ${f.owner || "unassigned"}). ${f.why}`);
+    const text = `*LightWork daily check*: ${flagged.length ? flagged.length + " item" + (flagged.length === 1 ? " needs" : "s need") + " attention" : "nothing needs attention today"}\n` + lines.join("\n") + (env.APP_URL ? `\n<${env.APP_URL}|Open the tracker>` : "");
+    try { const r = await fetch(env.SLACK_WEBHOOK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }); slack = r.ok ? "sent" : "failed"; } catch { slack = "failed"; }
+  }
+  const result = { date: now.date, time: now.time, source, open: items.filter((c) => !c.done).length, flagged, slack };
+  await env.DB.prepare("INSERT INTO checks (run_date, ran_at, source, result) VALUES (?, ?, ?, ?)").bind(now.date, new Date().toISOString(), source, JSON.stringify(result)).run();
+  await env.DB.prepare("DELETE FROM checks WHERE id NOT IN (SELECT id FROM checks ORDER BY id DESC LIMIT 60)").run();
+  return result;
+}
+async function listChecks(env) {
+  await ensureChecks(env);
+  const { results } = await env.DB.prepare("SELECT result FROM checks ORDER BY id DESC LIMIT 14").all();
+  return { checks: (results || []).map((r) => JSON.parse(r.result)) };
+}
 
 function safeEqual(a, b) {
   const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
