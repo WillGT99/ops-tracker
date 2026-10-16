@@ -406,7 +406,7 @@
         // The team list is shared data. Any team a task uses is always included.
         const teams = () => { const t = Array.isArray(S.teams) && S.teams.length && S.teams.join("|") !== OLD_DEFAULT ? S.teams.slice() : DEFAULT_TEAMS.slice(); S.items.forEach(c => { if (c.team && !t.includes(c.team)) t.push(c.team) }); return t };
         // Owner is optional. An empty owner means unassigned; placeholder words and team names are never stored as a person.
-        const cleanOwner = (v, tl) => { const o = String(v == null ? "" : v).trim().slice(0, 60); if (/^(unassigned|none|n\/?a|tbd|tba|unknown|nobody|no one|not set|-+|\?)$/i.test(o)) return ""; if ((tl || teams()).some(t => t.toLowerCase() === o.toLowerCase())) return ""; return o };
+        const cleanOwner = (v, tl) => { const o = String(v == null ? "" : v).trim().slice(0, 60); if (/^(unassigned|none|n\/?a|tbd|tba|unknown|nobody|no one|not set|-+|\?)$/i.test(o)) return ""; if ((tl || teams()).some(t => t.toLowerCase() === o.toLowerCase())) return ""; if (/^(the )?(dev ?ops|legal|hr|human resources|finance|accounts|design|ux|marketing|sales( ops)?|bd|partnerships|ops|operations|it|engineering|eng|dev|product|people|talent|recruiting|data|security|support|customer success|cs|leadership|management|exec|board|qa|infra(structure)?|platform|everyone|all|team)( team| department| dept)?$/i.test(o) || / (team|department|dept)$/i.test(o)) return ""; return o };
         const tidy = () => S.items.forEach(c => { c.owner = cleanOwner(c.owner) });
         const ownerTxt = c => c.owner ? esc(c.owner) : '<span class="unas">Unassigned</span>';
         const lastUp = c => { const u = c.log.filter(e => e.k !== "change"); return u[u.length - 1] };
@@ -670,8 +670,8 @@ Reply with ONLY a JSON object: {"count":<number of goals>,"goals":[{"goal":"<sho
 ${RULES()}`;
         const IMP_SYS = () => `You are an operations agent that imports goals into the team commitment tracker for LightWork AI, a 20-30 person startup.
 You are given the source text and the GOALS FOR THIS STEP (up to 4), each with the facts already gathered from the whole text. Handle every goal in this step fully: create the task (or use the existing task if the board already has it), then apply every fact: owner, due date, team, each progress update (with its date), risk, completion.
-Use only facts from the source text, the plan or the user's answers. Never invent. Before asking a question, re-read the WHOLE source text: only ask about something important that is genuinely stated nowhere (mainly due dates). Owner is optional: never ask about one owner at a time; at most one grouped question listing tasks with no owner.
-Group similar questions: for example, ask ONE question listing every task that has no owner, rather than one question per task.
+Use only facts from the source text, the plan or the user's answers. Never invent. Before asking a question, re-read the WHOLE source text: only ask about something important that is genuinely stated nowhere (mainly due dates). Never ask about owners: the app looks for missing owners itself.
+Group similar questions into one.
 Reply with ONLY a JSON object: {"note":"<a few words>","handled":[<numbers of the goals in this step that you fully handled>],"actions":[...],"finished":true|false}. At most 24 actions per reply.
 ${ACTIONS()}
 ${RULES()}
@@ -681,6 +681,8 @@ Reply with ONLY a JSON object: {"actions":[...],"keep":[<numbers of the question
 ${ACTIONS().replace(/\n\{"type":"ask"[^\n]*/, "")}
 ${RULES()}`;
         const board = (items, full) => JSON.stringify(items.map(c => { if (!full || !full.has(c.id)) return { id: c.id, team: c.team, title: c.title }; const lu = lastUp(c); return { id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due || "", at_risk: c.risk, done: c.done, last_update: lu ? lu.d + ": " + lu.t : "" } }));
+        const OWNER_SYS = `You find who owns tasks, using only the source text. For each task, look through the WHOLE text for a named person tied to that specific piece of work: someone reporting on it ("Sam says auth is finished"), doing it ("Jess has made a start"), owning it ("Maya owns the onboarding spec"), or last heard from about it ("last we heard from Tom"). A team or department (Legal, DevOps, HR, Finance, design) is never an owner.
+Reply with ONLY a JSON object: {"owners":[{"id":"<task id>","owner":"<the person's name as written>","quote":"<the exact words copied from the text that link this person to this task>"}]}. Leave out any task with no person tied to it. Never guess.`;
         const brief = items => JSON.stringify(items.map(c => { const lu = lastUp(c); return { id: c.id, team: c.team, title: c.title, owner: c.owner, due: c.due || "", at_risk: c.risk, done: c.done, last_update: lu ? lu.d + ": " + lu.t : "" } }));
         let IMP = null;
         async function runAgent(src, answers, showLog) {
@@ -738,6 +740,23 @@ ${RULES()}`;
                 if (step === max) stop = "reached the step limit";
             }
             if (skipped.length) log.push({ w: 1, t: "These goals may not have been fully handled: " + plan.filter(g => skipped.includes(g.n)).map(g => g.goal).join("; ") });
+            // 3a. Owners: one focused pass for this import's tasks that still have no owner. Each answer must quote the text,
+            //     and the app checks the quote really is in the text and contains that person's name.
+            const mine = new Set(acts.map(a => a.type === "create_task" ? a.__id : (refs[a.id] || a.id)).filter(Boolean));
+            const unowned = () => st.items.filter(c => mine.has(c.id) && !c.owner);
+            if (!answers && !stop && unowned().length) {
+                show("Looking for owners in the text...");
+                try {
+                    const r = await askJSON(OWNER_SYS, "SOURCE TEXT:\n" + src + "\n\nTASKS WITH NO OWNER:\n" + JSON.stringify(unowned().map(c => ({ id: c.id, team: c.team, title: c.title }))), show, "", "medium");
+                    const norm = t => String(t || "").toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/\s+/g, " ").trim(), whole = norm(src);
+                    const ok = (Array.isArray(r && r.owners) ? r.owners : []).filter(o => { const c = st.items.find(x => x.id === o.id), who = cleanOwner(o && o.owner, st.teams), q = norm(o && o.quote); return c && !c.owner && who && q.length >= 8 && whole.includes(q) && q.includes(norm(who).split(" ")[0]) });
+                    run(ok.map(o => ({ type: "set_field", id: o.id, field: "owner", value: cleanOwner(o.owner, st.teams) })));
+                } catch (e) { }
+            }
+            // The app, not the AI, asks about owners: the AI's owner questions are dropped, and near-duplicate questions merged.
+            for (let k = qs.length - 1; k >= 0; k--) if (/\bowners?\b|who (owns|is (responsible|doing|leading|handling|running))|assign/i.test(qs[k].q)) qs.splice(k, 1);
+            const nq = t => String(t).toLowerCase().replace(/[^a-z0-9 ]/g, "");
+            for (let k = qs.length - 1; k >= 0; k--) if (qs.some((x, j) => j !== k && nq(x.q).length > nq(qs[k].q).length && nq(x.q).includes(nq(qs[k].q)))) qs.splice(k, 1);
             // 3. Review: drop questions the text already answers, and apply those answers instead.
             if (qs.length && !stop) {
                 show("Checking its questions against the text...");
@@ -748,6 +767,9 @@ ${RULES()}`;
                     if (before > qs.length) log.push({ t: "Answered " + (before - qs.length) + " of its own question" + (before - qs.length === 1 ? "" : "s") + " from the text" })
                 } catch (e) { }
             }
+            // At most one owner question, written by the app, and only for open tasks.
+            const still = answers ? [] : unowned().filter(c => !c.done);
+            if (still.length && !stop) qs.push({ q: "Optional: who owns " + (still.length === 1 ? "this task" : "these tasks") + "? " + still.map(c => c.title).join("; ") + ". You can answer like \"" + still[0].title + ": Maya\".", id: "" });
             return { acts, qs, log, stop }
         }
         // Applies the agent's actions to the latest saved data, so nobody else's changes are overwritten.
