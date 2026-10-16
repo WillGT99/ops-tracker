@@ -335,12 +335,13 @@
         .qa{border-top:1px solid var(--line);padding:8px 0}button:disabled{opacity:.45;cursor:not-allowed}.unas{font-style:italic;color:var(--mut)}#tlist td{vertical-align:middle}.qa input{width:100%;margin-top:4px}
         .pill.needs{background:#6941c6}.pill.none{background:#98a2b3}
         .score{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:12px}
-        .sc{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)}.sc:hover{border-color:var(--acc)}.sc.on{outline:2px solid var(--acc);outline-offset:-1px}
-        .seg{display:inline-flex;gap:0}.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}.seg .on{background:var(--ink);color:#fff;border-color:var(--ink)}
+        .sc{display:block;width:100%;text-align:left;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)}.sc:hover{border-color:var(--acc)}.sc.on{outline:2px solid var(--acc);outline-offset:-1px}
+        .seg{display:inline-flex;flex-wrap:wrap;gap:0}.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}.seg .on{background:var(--ink);color:#fff;border-color:var(--ink)}
         .kan{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;align-items:flex-start}.col{flex:1 0 210px;min-width:210px;background:#e9edf3;border-radius:8px;padding:8px}
         .col h4{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between}.kc{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:6px;padding:8px;margin-bottom:6px;font-size:13px}
         .kc.missed{border-left-color:var(--bad)}.kc.at-risk{border-left-color:var(--warn)}.kc.needs{border-left-color:#6941c6}.kc.done{border-left-color:#667085;opacity:.8}.kc .flag{font-size:12px;margin-top:2px}
         .chk{background:#f6f8fb;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:13px}
+        .chg{margin-top:8px;padding:8px;border-radius:6px;background:var(--card);border:1px solid var(--line);white-space:normal}.chg ul{margin:4px 0 6px;padding-left:18px}.chg li{margin:2px 0}.chg .err{display:block}
     </style>
 </head>
 
@@ -503,9 +504,9 @@ ${c.log.length > 1 ? `<details><summary class="mut">History (${c.log.length})</s
             const welcome = S.items.length ? "" : '<div class="box"><b>No commitments yet</b><p class="mut" style="margin-bottom:8px">Paste your team goals and deadlines to get started. They can be messy, for example "Engineering: ship integration by 14 April".</p><button class="p" onclick="document.querySelector(\'#tabs [data-t=&quot;2&quot;]\').click()">Import goals</button></div>';
             const ts = teams(), team = ts.includes(VIEW.team) ? VIEW.team : "", view = VIEW.view === "list" ? "list" : "kanban";
             const score = '<div class="score">' + ts.map(t => { const l = S.items.filter(c => c.team === t), h = health(l), n = k => l.filter(c => colOf(c) === k).length;
-                return `<button class="sc${t === team ? " on" : ""}" data-team="${esc(t)}" aria-pressed="${t === team}"><div class="row" style="justify-content:space-between"><b>${esc(t)}</b><span class="pill ${h[0]}">${h[1]}</span></div><div class="mut" style="margin-top:4px">${n("on-track")} on track · ${n("at-risk")} at risk · ${n("missed")} missed${n("needs") ? " · " + n("needs") + " need update" : ""} · ${n("done")} done</div></button>` }).join("") + "</div>";
+                return `<button class="sc${t === team ? " on" : ""}" data-team="${esc(t)}" aria-pressed="${t === team}"><div class="row" style="justify-content:space-between"><b>${esc(t)}</b><span class="pill ${h[0]}">${h[1]}</span></div><div class="mut" style="margin-top:4px">${n("on-track")} on track · ${n("at-risk")} at risk · ${n("missed")} missed${n("needs") ? " · " + n("needs") + " need update" : ""} · ${n("done")} done</div><div style="margin-top:6px;font-size:13px;color:var(--acc)">${t === team ? "Showing this team" : "View tasks →"}</div></button>` }).join("") + "</div>";
             const items = S.items.filter(c => !team || c.team === team);
-            const bar = `<div class="row" style="margin:4px 0 10px"><b>${team ? esc(team) : "All teams"}</b>${team ? '<button data-team="">Show all teams</button>' : '<span class="mut">Click a team to focus on it</span>'}<span class="seg" style="margin-left:auto"><button data-v="kanban" class="${view === "kanban" ? "on" : ""}">Kanban</button><button data-v="list" class="${view === "list" ? "on" : ""}">List</button></span></div>`;
+            const bar = `<div class="row" style="margin:4px 0 10px"><span class="mut">Show:</span><span class="seg" role="group" aria-label="Choose a team">${["", ...ts].map(t => `<button data-team="${esc(t)}" class="${t === team ? "on" : ""}" aria-pressed="${t === team}">${t ? esc(t) : "All teams"}</button>`).join("")}</span><span class="seg" style="margin-left:auto"><button data-v="kanban" class="${view === "kanban" ? "on" : ""}">Kanban</button><button data-v="list" class="${view === "list" ? "on" : ""}">List</button></span></div>`;
             const byDue = (a, b) => (a.due || "9999") < (b.due || "9999") ? -1 : (a.due || "9999") > (b.due || "9999") ? 1 : 0;
             const kanban = '<div class="kan">' + COLS.map(([k, label]) => { const l = items.filter(c => colOf(c) === k).sort(k === "done" ? (a, b) => (b.doneOn || "") < (a.doneOn || "") ? -1 : 1 : byDue);
                 return `<div class="col"><h4><span>${label}</span><span class="mut">${l.length}</span></h4>${l.map(c => kcard(c, !team)).join("") || '<div class="mut" style="font-size:12px">None</div>'}</div>` }).join("") + "</div>";
@@ -902,20 +903,42 @@ ${c.done ? "" : `<div style="margin-top:12px"><textarea id="dnote" style="min-he
         }
         function rChat() {
             const el = $("#cmsgs"), v = viewing(), sug = ["What's at risk or missed?", "Who should I chase this week?", "What's due in the next 7 days?", "Summarise Engineering"]; if (v) sug.unshift("Tell me about this task");
-            el.innerHTML = (CH.length ? "" : '<p class="mut" style="margin:0">Ask anything about the commitments on the board. Answers use only the data stored here.</p><div class="chips">' + sug.map(x => `<button type="button">${esc(x)}</button>`).join("") + "</div>") +
-                CH.map(m => m.r === "u" ? `<div class="msg u">${esc(m.t)}</div>` : `<div class="msg a">${m.wait ? '<span class="mut" style="margin:0">Thinking...</span>' : linkify(m.t) + (m.note ? `<span class="mut">${esc(m.note)}</span>` : "")}</div>`).join("");
-            el.querySelectorAll(".chips button").forEach(b => b.onclick = () => ask(b.textContent)); el.scrollTop = el.scrollHeight
+            el.innerHTML = (CH.length ? "" : '<p class="mut" style="margin:0">Ask about the commitments on the board, or tell me what has changed, for example \u201cTom says rate-limiting is done\u201d or \u201cmove the newsletter to Friday\u201d. Changes can be undone.</p><div class="chips">' + sug.map(x => `<button type="button">${esc(x)}</button>`).join("") + "</div>") +
+                CH.map(m => m.r === "u" ? `<div class="msg u">${esc(m.t)}</div>` : `<div class="msg a">${m.wait ? '<span class="mut" style="margin:0">Thinking...</span>' : linkify(m.t) + (m.note ? `<span class="mut">${esc(m.note)}</span>` : "") + chgHtml(m, CH.indexOf(m))}</div>`).join("");
+            el.querySelectorAll(".chips button").forEach(b => b.onclick = () => ask(b.textContent));
+            el.querySelectorAll("[data-undo]").forEach(b => b.onclick = () => chatUndo(+b.dataset.undo)); el.querySelectorAll("[data-apply]").forEach(b => b.onclick = () => chatApply(+b.dataset.apply));
+            el.querySelectorAll("[data-cancel]").forEach(b => b.onclick = () => { const m = CH[+b.dataset.cancel]; m.pending = null; m.changes = []; m.t += "\n(Cancelled, nothing was changed.)"; rChat() }); el.scrollTop = el.scrollHeight
         }
+        // The chat can answer questions and make changes. Changes use the same checked actions as the import agent,
+        // are applied to the latest saved data, and can be undone. Deleting tasks and renaming teams stay manual.
+        const CHAT_SYS = () => `You are the operations assistant for LightWork AI, a 20-30 person startup. Founders ask you about team commitments and deadlines, and can ask you to change them.
+Reply with ONLY a JSON object: {"reply":"<your message to the user>","actions":[...],"clarify":"<one short question if a requested change is ambiguous, else empty>"}
+ANSWERING: use ONLY the commitments data. Never invent tasks, people, dates or reasons. Status and reason are calculated by fixed rules; repeat them, don't recalculate. If the data doesn't answer the question, say so. Keep "reply" brief: a sentence or two, or short lines starting with "- ". Plain text, no markdown. Write task titles exactly as they appear in the data.
+CHANGING: only when the user asks for a change or gives new information about a task, for example "mark the login fix done", "Tom says rate-limiting is finished", "move the newsletter to Friday", "make Priya the owner", "the CRM cleanup is blocked", "add a task for Operations to renew the office lease by 30 Nov". Use the task ids from the data. Apply every part of the request. If you can't tell which task is meant, or a needed value is missing, make NO change and ask in "clarify". In "reply", say in a few words what you changed. Never delete tasks, clear data or rename teams: tell the user to do that in the app. Questions alone never need actions.
+${ACTIONS().split("\n").filter(l => !/"type":"(ask|rename_team)"/.test(l)).join("\n")}
+${RULES()}`;
         async function ask(q) {
-            q = q.trim(); if (!q) return; const hist = CH.filter(m => !m.wait).slice(-6).map(m => (m.r === "u" ? "User: " : "Assistant: ") + m.t).join("\n");
+            q = q.trim(); if (!q) return; const hist = CH.filter(m => !m.wait).slice(-6).map(m => (m.r === "u" ? "User: " : "Assistant: ") + m.t + (m.changes && m.changes.length ? " [changed: " + m.changes.join("; ") + "]" : "")).join("\n");
             CH.push({ r: "u", t: q }); const a = { r: "a", wait: true }; CH.push(a); rChat(); $("#cin").value = ""; const v = viewing();
             try {
-                let t = await ai("You are the operations assistant for LightWork AI, a 20-30 person startup. You answer questions from the founders about team commitments and deadlines. Use ONLY the JSON data provided. Never invent tasks, people, dates or reasons. Status and reason are already calculated by fixed rules; repeat them, don't recalculate. If the data doesn't answer the question, say so plainly. Be brief: a sentence or two, or short lines starting with \"- \". Plain text only, no markdown, no bold. Write task titles exactly as they appear in the data. Refer to dates as given.",
-                    "Today is " + realToday() + ".\nRules: Missed = past due and not done. At risk = owner flagged a risk, or due within 7 days with no update for 5+ days. Needs update = no update for 10+ days.\n" + (v ? 'The user is currently viewing the task "' + v.title + '" (id ' + v.id + '). "This task" means that one.\n' : "") + "Commitments JSON:\n" + JSON.stringify(snapshot()) + (hist ? "\n\nConversation so far:\n" + hist : "") + "\n\nQuestion: " + q);
-                a.t = t.replace(/\*\*|__|^#+\s*/gm, "").trim()
-            } catch (e) { a.t = localAnswer(q); a.note = aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Simple built-in answer." : "AI not connected. Simple built-in answer." }
+                const r = await askJSON(CHAT_SYS(), "Today is " + realToday() + ".\nRules: Missed = past due and not done. At risk = owner flagged a risk, or due within 7 days with no update for 5+ days. Needs update = no update for 10+ days.\n" + (v ? 'The user is currently viewing the task "' + v.title + '" (id ' + v.id + '). "This task" means that one.\n' : "") + "Commitments JSON:\n" + JSON.stringify(snapshot()) + (hist ? "\n\nConversation so far:\n" + hist : "") + "\n\nUser: " + q, () => { }, "Keep it short.");
+                const clarify = String(r && r.clarify || "").trim(); a.t = String(r && r.reply || "").replace(/\*\*|__|^#+\s*/gm, "").trim();
+                const acts = (Array.isArray(r && r.actions) ? r.actions : []).filter(x => x && typeof x === "object" && !["ask", "rename_team"].includes(x.type)).slice(0, 20);
+                if (acts.length && !clarify) {
+                    // Check every action on a copy first; only the valid ones are applied.
+                    const st = { items: JSON.parse(JSON.stringify(S.items)), teams: teams() }, refs = {}, made = [], ok = [];
+                    a.changes = []; a.errs = [];
+                    acts.forEach(x => { const res = execA(st, x, refs, made); if (res.err) a.errs.push(res.err); else if (res.text) { ok.push(x); a.changes.push(res.text) } });
+                    if (ok.length) { if (confirmAll()) a.pending = ok; else { a.undo = await commitActs(ok) } }
+                }
+                if (clarify) a.t = (a.t ? a.t + "\n" : "") + clarify;
+                if (!a.t) a.t = a.changes && a.changes.length ? "Done." : "I couldn't work that out. Could you rephrase?";
+            } catch (e) { a.t = localAnswer(q); a.note = aiOn() ? "AI failed (" + (e && e.message || "unknown error") + "). Simple built-in answer; changes need the AI." : "AI not connected. Simple built-in answer." }
             a.wait = false; rChat()
         }
+        function chatUndo(k) { const m = CH[k]; if (!m || !m.undo) return; const { before, created, teamsBefore } = m.undo; S.items = S.items.filter(c => !created.includes(c.id)).map(c => before[c.id] || c); S.teams = teamsBefore || undefined; m.undo = null; m.undone = true; save(); render(); rChat() }
+        async function chatApply(k) { const m = CH[k]; if (!m || !m.pending) return; const ok = m.pending; m.pending = null; m.undo = await commitActs(ok); rChat() }
+        const chgHtml = (m, k) => (m.changes && m.changes.length ? `<div class="chg"><b>${m.pending ? "Proposed changes" : m.undone ? "Changes undone" : "Changes made"}</b><ul>${m.changes.map(t => `<li>${linkify(t)}</li>`).join("")}</ul>${m.pending ? `<button class="p" data-apply="${k}">Apply</button> <button data-cancel="${k}">Cancel</button>` : m.undo ? `<button data-undo="${k}">Undo</button>` : ""}</div>` : "") + (m.errs && m.errs.length ? `<div class="chg"><b>Couldn't apply</b>${m.errs.map(t => `<span class="err">${esc(String(t).replace(/\. If the text clearly names.*$/, ". You can add a team in the Teams tab.").replace(/^no task with id .*/, "That task couldn't be found.").replace(/; ref .* update it instead$/, "."))}</span>`).join("")}</div>` : "");
         const chatOpen = o => { $("#chat").classList.toggle("hide", !o); $("#cbtn").classList.toggle("hide", o); if (o) { rChat(); $("#cin").focus() } };
         $("#cbtn").onclick = () => chatOpen(true); $("#cx").onclick = () => chatOpen(false); $("#cclr").onclick = () => { CH = []; rChat() };
         $("#cform").onsubmit = e => { e.preventDefault(); if (!CH.some(m => m.wait)) ask($("#cin").value) };

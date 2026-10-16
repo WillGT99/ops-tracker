@@ -13,7 +13,7 @@ A prototype operations agent for tracking team commitments and deadlines at Ligh
 - **Teams:** LightWork's four teams to start with, editable (add, rename, remove) and shared by everyone. The import agent files other departments under the closest team.
 - **Weekly summary:** an AI-written summary with a line per team, then what's missed, at risk, needing an update and completed this week. You can edit and copy it.
 - **Task pages:** click any task for its full history, stored data, edits and nudges.
-- **Ask about tasks:** a chatbox that answers questions using only the tracker's data.
+- **Ask about tasks:** a chat that answers questions using only the tracker's data, and can make changes when you tell it what's happened, for example "Tom says rate-limiting is done, and push the roadmap deck to the 6th". Changes go through the same checks as imports, are tagged in each task's history, and can be undone. If a request is ambiguous it asks first. Deleting tasks and renaming teams stay manual.
 
 ## How status works
 
